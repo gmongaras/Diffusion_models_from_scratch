@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 def PixelCNN_test():
     # Params
     test_size_per = 0.1
-    epochs = 1
+    epochs = 20
     batch_size = 128
     
     # Get the MNIST data for testing
@@ -26,10 +26,6 @@ def PixelCNN_test():
     data = torch.cat((mnisttrainset.data, 
                       mnisttestset.data)).unsqueeze(1).float()
     # Data is of shape (N=70,000, C=1, L=28, W=28)
-    
-    # Values less than 50% of 256 become 0. Values
-    # greater than 50% of 256 become 1
-    data = torch.where(data < (0.33 * 256), 0, 1).float()
     
     # Create the model
     model = PixelCNN()
@@ -47,7 +43,7 @@ def PixelCNN_test():
     
     
     ### Train the model
-    for epoch in range(0, epochs):
+    for epoch in range(1, epochs+1):
         # Split the data into batches
         batches = torch.split(data_train, batch_size)
         
@@ -57,8 +53,12 @@ def PixelCNN_test():
             # Output: (N, 28, 28, 2)
             Y_hat = model(batch).permute(0, 2, 3, 1)
             
+            # One-hot encode the labels
+            batch = batch.permute(0, 2, 3, 1).squeeze()
+            batch = torch.nn.functional.one_hot(batch.long(), Y_hat.shape[-1]).float()
+            
             # Get the loss
-            loss = model.loss_funct(Y_hat, batch.permute(0, 2, 3, 1))
+            loss = model.loss_funct(Y_hat, batch)
             
             # Optimize the model
             loss.backward()
@@ -88,22 +88,24 @@ def PixelCNN_test():
                 
                 # We only want the probabilities for the current pixel
                 # Output: (N)
-                probs = probs[:, row, col, channel].squeeze()
+                probs = probs[:, row, col].squeeze()
+                probs = torch.argmax(probs, dim=-1)
                 
                 # Add some noise in the model so that it can
                 # actually generate an image
-                probs = torch.ceil(
-                    probs - torch.rand(1).cuda()
-                )
+                # probs = torch.ceil(
+                #     probs - torch.rand(1).cuda()
+                # )
                 
-                # Get the pixel value (0 or 1)
-                new_vals = torch.round(probs)
+                # Get the discrete pixel value
+                # new_vals = torch.round(probs)
+                # new_vals = torch.clamp(probs, 0, 255)
                 
                 # Set the new pixel value
-                out_img[:, channel, row, col] = new_vals
+                out_img[:, channel, row, col] = probs
     
     # Show the image
-    out_img = out_img.permute(0, 2, 3, 1)*255
+    out_img = out_img.permute(0, 2, 3, 1)
     plt.imshow(out_img.detach().cpu().squeeze(0))
     plt.show()
     

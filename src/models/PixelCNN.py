@@ -34,15 +34,15 @@ class PixelCNN(nn.Module):
             
             # Final layer is a normal conv layer predicting
             # from all possible pixel values
-            nn.Conv2d(128, 1, 1),
-            nn.Sigmoid(),
+            nn.Conv2d(128, 256, 1),
+            nn.Softmax(dim=-1),
         )
         
         # Optimizer
         self.optim = torch.optim.Adam(self.parameters(), 0.0005)
         
         # Loss function
-        self.loss_funct = nn.BCELoss()
+        self.loss_funct = nn.CrossEntropyLoss()
     
     
     
