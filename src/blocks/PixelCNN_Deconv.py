@@ -5,8 +5,8 @@ import torch
 
 
 # A 2-D convolution layer with a mask
-class PixelCNN_Conv(nn.Module):
-    
+class PixelCNN_Deconv(nn.Module):
+
     # mask_type - "A" to use mask type A, which restricts connections
     #             to other colors which have already been predicted.
     #             Note that mask A is only for the first convolution layer
@@ -19,11 +19,11 @@ class PixelCNN_Conv(nn.Module):
     # padding - Padding to add to the convolution
     def __init__(self, mask_type, in_channels, out_channels,
                  kernel_size, stride=1, padding=0):
-        super(PixelCNN_Conv, self).__init__()
+        super(PixelCNN_Deconv, self).__init__()
         
         # Create the 2D convolution layer
         # Note: Has shape (C_out, C_in, kernel_size, kernel_size)
-        self.conv = nn.Conv2d(in_channels, out_channels,
+        self.conv = nn.ConvTranspose2d(in_channels, out_channels,
                               kernel_size, stride, padding)
         
         # Create the mask
