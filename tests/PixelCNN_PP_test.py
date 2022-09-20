@@ -1,14 +1,16 @@
 # Path hack for relative paths
+from random import weibullvariate
 import sys, os
 sys.path.insert(0, os.path.abspath('./src'))
 
 
 from src.models.PixelCNN_PP import PixelCNN_PP
-from src.models.PixelCNN_PP_loss import PixelCNN_PP_loss
+from src.helpers.PixelCNN_PP_loss import PixelCNN_PP_loss
+from src.helpers.PixelCNN_PP_helper_functions import get_preds
 import torch
 from torchvision import datasets as dts
 import matplotlib.pyplot as plt
-
+import numpy as np
 
 
 
@@ -18,8 +20,9 @@ import matplotlib.pyplot as plt
 def PixelCNN_test():
     # Params
     test_size_per = 0.1
-    epochs = 20
+    epochs = 0
     batch_size = 128
+    scaled = True
     
     # Get the MNIST data for testing
     trainset = dts.CIFAR10(root='./data', train=True, download=True)
@@ -32,7 +35,8 @@ def PixelCNN_test():
     # Data is of shape (N=60,000, C=3, L=32, W=32)
     
     # Scale the data between -1 and 1
-    data = ((data - 127.5)/127.5)
+    if scaled:
+        data = ((data - 127.5)/127.5)
     
     
     # Model params
@@ -88,33 +92,36 @@ def PixelCNN_test():
     
     # Iterate over each pixel. Images are generated one pixel
     # at a time
-    for row in range(rows):
-        for col in range(cols):
-            for channel in range(channels):
-                # Feed the current outputs through the model
-                # Output: (N, rows, cols, channels)
-                probs = model(out_img).permute(0, 2, 3, 1)
-                
-                # We only want the probabilities for the current pixel
-                # Output: (N)
-                probs = probs[:, row, col].squeeze()
-                probs = torch.argmax(probs, dim=-1)
-                
-                # Add some noise in the model so that it can
-                # actually generate an image
-                # probs = torch.ceil(
-                #     probs - torch.rand(1).cuda()
-                # )
-                
-                # Get the discrete pixel value
-                # new_vals = torch.round(probs)
-                # new_vals = torch.clamp(probs, 0, 255)
-                
-                # Set the new pixel value
-                out_img[:, channel, row, col] = probs
+    with torch.no_grad():
+        for row in range(rows):
+            for col in range(cols):
+                for channel in range(channels):
+                    # Get a prediction from the network
+                    pred = model(out_img).permute(0, 2, 3, 1)
+                    
+                    # Reshape the predictions to distinguish the channels
+                    # (N, L, W, 9K) -> (N, L, W, 3, 3K)
+                    pred = pred.reshape(*pred.shape[:-1], 3, pred.shape[-1]//3)
+                    
+                    # Get the current pixel's prediction
+                    # Shape is (N, 3K)
+                    pred = pred[:, row, col, channel]
+                    
+                    # Get the distribution paramters
+                    # Shape is (N, K) for each
+                    mu_hat = pred[:, ::3]
+                    s_inv_hat = pred[:, 1::3]
+                    pi_hat = pred[:, 2::3]
+                    
+                    ### Calculate the distribution output
+                    
+                    preds = get_preds(mu_hat, s_inv_hat, pi_hat, scaled)
+                    
+                    # Set the new pixel value
+                    out_img[:, channel, row, col] = preds.float()
     
     # Show the image
-    out_img = out_img.permute(0, 2, 3, 1)
+    out_img = out_img.permute(0, 2, 3, 1).int()
     plt.imshow(out_img.detach().cpu().squeeze(0))
     plt.show()
     
