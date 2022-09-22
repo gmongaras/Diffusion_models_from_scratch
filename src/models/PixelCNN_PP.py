@@ -104,7 +104,7 @@ class PixelCNN_PP(nn.Module):
         self.out_linear = nn.Linear(num_filters, C_out)
         
         # Softmax layer for the weights
-        self.softmax = nn.Softmax(-1)
+        self.softmax = nn.LogSoftmax(-1)
         
         
         

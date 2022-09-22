@@ -28,6 +28,10 @@ def logistic_CDF(x, mu, scale, s_inv):
 #   preds - Pixel value predictions of shape (N)
 def get_preds(mu, s_inv, pi, scaled):
     
+    # The weights are log probabilities, scale them
+    # so that they are normal probabilities
+    pi = torch.exp(pi)
+    
     ### Calculate the probabilities for each pixel values
     # Scale factor for the logistic function
     scale = 1/(2*127.5) if scaled else 0.5
@@ -54,6 +58,9 @@ def get_preds(mu, s_inv, pi, scaled):
     pix_vals = pi.unsqueeze(1)*pix_vals
     pix_vals = pix_vals.sum(-1)
     
+    # Make the probabilities between 0 and 1
+    pix_vals /= pix_vals.sum(-1)
+    
     
     
     
@@ -61,7 +68,7 @@ def get_preds(mu, s_inv, pi, scaled):
     ### argmax value of them to get the predicted pixel value
     preds = []
     for n in range(0, pix_vals.shape[0]):
-        preds.append(torch.argmax(torch.tensor(np.random.multinomial(1, pix_vals[n].cpu().detach().numpy()))))
+        preds.append(torch.multinomial(pix_vals[n], 1))
     preds = torch.stack(preds)
     
     # Return the predictions

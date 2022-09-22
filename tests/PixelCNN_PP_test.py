@@ -123,6 +123,7 @@ def PixelCNN_test():
     # Show the image
     out_img = out_img.permute(0, 2, 3, 1).int()
     plt.imshow(out_img.detach().cpu().squeeze(0))
+    plt.savefig(fname="Out.png")
     plt.show()
     
     

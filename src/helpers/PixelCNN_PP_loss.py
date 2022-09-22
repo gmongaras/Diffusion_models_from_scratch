@@ -5,6 +5,12 @@ import torch
 
 
 # Loss for the PixelCNN++ model
+# Note: The loss calculation comes from 4 inputs and 1 output.
+# The inputs are pi, mu, and s_inv for the distribution. The foruth
+# input is x, the pixel value. The output is the probability that
+# the model thinks the pixel, x (the input), should be in the
+# current location (which should be 100%). The goal is to have the model
+# maximize the probability of x for each pixel in the image.
 # Input:
 #   Y_hat - Predictions from the model of shape (N, C=9K, L, W)
 #   Y - True labels for the model of shape (N, C=3, L, W)
@@ -63,7 +69,7 @@ def PixelCNN_PP_loss(Y_hat, Y):
     # Scale the loss for each distribution and get the final
     # loss value
     # (Loss had shape (N, K), now has shape (N))
-    C1_loss = (C1_pi * C1_loss).sum(-1)
+    C1_loss = (C1_pi + C1_loss).sum(-1)
     
     
     ## Case 2: White pixel
@@ -84,7 +90,7 @@ def PixelCNN_PP_loss(Y_hat, Y):
     # Scale the loss for each distribution and get the final
     # loss value
     # (Loss had shape (N, K), now has shape (N))
-    C2_loss = (C2_pi * C2_loss).sum(-1)
+    C2_loss = (C2_pi + C2_loss).sum(-1)
     
     
     ## Case 3: Overflow condition
@@ -116,7 +122,7 @@ def PixelCNN_PP_loss(Y_hat, Y):
     # Scale the loss for each distribution and get the final
     # loss value
     # (Loss had shape (N, K), now has shape (N))
-    C3_loss = (C3_pi * C3_loss).sum(-1)
+    C3_loss = (C3_pi + C3_loss).sum(-1)
     
     
     
@@ -150,7 +156,7 @@ def PixelCNN_PP_loss(Y_hat, Y):
     # Scale the loss for each distribution and get the final
     # loss value
     # (Loss had shape (N, K), now has shape (N))
-    C4_loss = (C4_pi * C4_loss).sum(-1)
+    C4_loss = (C4_pi + C4_loss).sum(-1)
     
     
     
