@@ -146,7 +146,7 @@ class PixelCNN_PP(nn.Module):
         ### Upsampling
         for b in range(0, len(self.up_blocks)):
             # Add the residual connection to the input
-            X +=  saved_states[-(b+1)]
+            X += saved_states[-(b+1)]
             
             # Send the input through the block
             X = self.up_blocks[b](X)
@@ -154,10 +154,15 @@ class PixelCNN_PP(nn.Module):
         # Final output linear layer
         X = self.out_linear(X.permute(0, 2, 3, 1))
         
+        # Reshape the output so that the values
+        # that need to be transformed can be transformed
+        X_shape = X.shape
+        X = X.reshape(*X.shape[:-1], 3, X.shape[-1]//3)
+        
         # Exponentiate the s_inverse values
-        X[:, :, :, 1::3] = torch.exp(X[:, :, :, 1::3])
+        X[:, :, :, :, 1::3] = torch.exp(X[:, :, :, :, 1::3])
         
         # Softmax the pi weights
-        X[:, :, :, 2::3] = self.softmax(X[:, :, :, 2::3])
+        X[:, :, :, :, 2::3] = self.softmax(X[:, :, :, :, 2::3])
             
-        return X.permute(0, 3, 1, 2)
+        return X.reshape(*X_shape).permute(0, 3, 1, 2)

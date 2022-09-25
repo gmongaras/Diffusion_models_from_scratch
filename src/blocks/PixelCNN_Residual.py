@@ -21,7 +21,7 @@ class PixelCNN_Residual(nn.Module):
             nn.ReLU(),
         )
         
-        # Seocnd 3x3 conv
+        # Second 3x3 conv
         self.conv2 = nn.Sequential(
             PixelCNN_Conv(mask_type, in_channels//2, 
                           in_channels//2, 3, padding=1),

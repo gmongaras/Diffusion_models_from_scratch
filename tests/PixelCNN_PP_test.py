@@ -122,8 +122,12 @@ def PixelCNN_test():
     
     # Show the image
     out_img = out_img.permute(0, 2, 3, 1).int()
-    plt.imshow(out_img.detach().cpu().squeeze(0))
-    plt.savefig(fname="Out.png")
+    fig = plt.imshow(out_img.detach().cpu().squeeze(0))
+    plt.axis('off')
+    fig.axes.get_xaxis().set_visible(False)
+    fig.axes.get_yaxis().set_visible(False)
+    plt.savefig(fname="Out.png", format="png", \
+        bbox_inches='tight', pad_inches=0)
     plt.show()
     
     
