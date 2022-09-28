@@ -120,6 +120,10 @@ def PixelCNN_test():
                     # Set the new pixel value
                     out_img[:, channel, row, col] = preds.float()
     
+    # Scale the image back to 0-256 if needed
+    if scaled:
+        out_img = (out_img*127.5)+127.5
+    
     # Show the image
     out_img = out_img.permute(0, 2, 3, 1).int()
     fig = plt.imshow(out_img.detach().cpu().squeeze(0))

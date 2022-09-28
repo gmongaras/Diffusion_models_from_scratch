@@ -64,7 +64,8 @@ def PixelCNN_PP_loss(Y_hat, Y):
     
     # Calculate the loss for these values
     C1_im = (C1_X - C1_mu + scale)*C1_s_inv
-    C1_loss = C1_im - torch.nn.functional.softplus(C1_im)
+    # C1_loss = C1_im - torch.nn.functional.softplus(C1_im)
+    C1_loss = torch.log(torch.sigmoid(C1_im))
     
     # Scale the loss for each distribution and get the final
     # loss value
@@ -85,7 +86,8 @@ def PixelCNN_PP_loss(Y_hat, Y):
     
     # Calculate the loss for these values
     C2_im = (C2_X - C2_mu - scale)*C2_s_inv
-    C2_loss = -torch.nn.functional.softplus(C2_im)
+    # C2_loss = -torch.nn.functional.softplus(C2_im)
+    C2_loss = torch.log(1-torch.sigmoid(C2_im))
     
     # Scale the loss for each distribution and get the final
     # loss value

@@ -59,17 +59,19 @@ def get_preds(mu, s_inv, pi, scaled):
     pix_vals = pix_vals.sum(-1)
     
     # Make the probabilities between 0 and 1
-    pix_vals /= pix_vals.sum(-1)
+    pix_vals /= torch.max(pix_vals.sum(-1), torch.tensor(1e-6))
     
     
     
     
-    ### Now that the probabilities are calculated, get the
-    ### argmax value of them to get the predicted pixel value
-    preds = []
-    for n in range(0, pix_vals.shape[0]):
-        preds.append(torch.multinomial(pix_vals[n], 1))
-    preds = torch.stack(preds)
+    ### Now that the probabilities are calculated, create a
+    ### multinomial distribution over all 256 pixel values
+    ### and sample the distribution
+    preds = torch.multinomial(pix_vals, 1)
+    
+    # If the values are scaled, scale the prediction
+    if scaled:
+        preds = ((preds - 127.5)/127.5)
     
     # Return the predictions
     return preds
