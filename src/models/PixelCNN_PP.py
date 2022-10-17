@@ -15,7 +15,7 @@ class PixelCNN_PP(nn.Module):
     #               res net block
     # K - Number of distributions the model will predict
     #     Note: This scales the output by a liner factor of 9
-    def __init__(self, num_filters=160, num_res_net=5, K=5):
+    def __init__(self, num_filters=160, num_res_net=6, K=5):
         super(PixelCNN_PP, self).__init__()
         
         # Number of channels in the output is 3*3K:

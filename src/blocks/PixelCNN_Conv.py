@@ -59,7 +59,7 @@ class PixelCNN_Conv(nn.Module):
             self.mask[:, :, kernel_shape[2]//2, kernel_shape[3]//2] = 1
             
         # ReLU blocks
-        self.relu = nn.ReLU(inplace=False)
+        self.act = nn.ELU(inplace=False)
         
     # Inputs:
     #   X - Images of shape (N, h, n, n)
@@ -73,4 +73,4 @@ class PixelCNN_Conv(nn.Module):
         self.conv.weight = torch.nn.Parameter(self.conv.weight * self.mask)
         
         # Return the convoluted input
-        return self.relu(self.conv(X)) + 0
+        return self.act(self.conv(X)) + 0
