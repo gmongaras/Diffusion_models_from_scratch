@@ -3,6 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.abspath('./src'))
 
 from src.blocks.BigGAN_ResUp import BigGAN_ResUp
+from src.blocks.BigGAN_Res import BigGAN_Res
 from src.blocks.BigGAN_ResUp_Deep import BigGAN_ResUp_Deep
 from src.blocks.BigGAN_ResDown_Deep import BigGAN_ResDown_Deep
 from src.blocks.BigGAN_ResDown import BigGAN_ResDown
@@ -39,6 +40,15 @@ def test():
     
     # Feed the input through the Downsampling block
     X = Down(X)
+    
+    # Output should be (N, C, L, W)
+    assert X.shape == (N, C, L, W)
+    
+    # Residual block (N, C, L, W) -> (N, C, L, W)
+    Res = BigGAN_Res(C, C)
+    
+    # Feed the input through the Residual block
+    X = Res(X)
     
     # Output should be (N, C, L, W)
     assert X.shape == (N, C, L, W)
