@@ -19,8 +19,8 @@ class Non_local(nn.Module):
         # Output convolution
         self.O_conv = nn.Conv3d(inCh//2, inCh, 1)
         
-        # Softmax function
-        self.soft = nn.Softmax(dim=-1)
+        # Batch normalization
+        self.batchNorm = nn.BatchNorm2d(inCh)
         
     # Inputs:
     #   X - tensor of shape (N, inCh, L, W) or tensor of shape (N, inCh, T, L, W)
@@ -48,27 +48,26 @@ class Non_local(nn.Module):
         V = V.flatten(start_dim=2)
         
         # Multiply the query and key along the channels 
-        # and apply the softmax function
         # (N, inCh/2, TLW) * (N, inCh/2, TLW) -> (N, TLW, TLW)
-        Soft = self.soft(Q.permute(0, 2, 1)@K)
+        Out = Q.permute(0, 2, 1)@K
         
-        # Multiply the softmax matrix by the values matrix
+        # Multiply the output matrix by the values matrix
         # (N, TLW, TLW) * (N, inCh/2, TLW) -> (N, inCh/2, TLW)
-        Soft = (Soft@V.permute(0, 2, 1)).permute(0, 2, 1)
+        Out = (Out@V.permute(0, 2, 1)).permute(0, 2, 1)
         
         # Unflatten the resulting tensor
         # (N, inCh/2, TLW) -> (N, inCh/2, T, L, W)
-        Soft = Soft.unflatten(-1, X.shape[2:])
+        Out = Out.unflatten(-1, X.shape[2:])
         
         # Send the resulting tensor through the
         # final convolution to get the initial channels
-        Soft = self.O_conv(Soft)
+        Out = self.O_conv(Out)
         
         # Remove the temporal dimension if the temporal dimension
         # didn't exist in the input
         if not hasTemporal:
-            Soft = Soft.squeeze(2)
+            Out = Out.squeeze(2)
             X = X.squeeze(2)
         
         # Return the otuput with the input as a residual
-        return Soft + X
+        return self.batchNorm(Out + X)

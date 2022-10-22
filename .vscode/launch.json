@@ -10,8 +10,6 @@
             "request": "launch",
             //"module": "src.main",
             "module": "tests.BigGAN_Res_test",
-            //"module": "tests.Conv_mask_test",
-            //"module": "tests.PixelCNN_PP_test",
             "console": "integratedTerminal",
             "justMyCode": false
         }

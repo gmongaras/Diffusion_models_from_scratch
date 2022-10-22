@@ -24,8 +24,8 @@ class Non_local_MH(nn.Module):
         # Output convolution
         self.O_conv = nn.Conv3d(inCh, inCh, 1)
         
-        # Softmax function
-        self.soft = nn.Softmax(dim=-1)
+        # Batch normalization
+        self.batchNorm = nn.BatchNorm2d(inCh)
         
     # Given a tensor, the tensor is extended to multiple heads
     # Inputs:
@@ -78,31 +78,30 @@ class Non_local_MH(nn.Module):
         V = V.flatten(start_dim=3)
         
         # Multiply the query and key along the channels 
-        # and apply the softmax function
         # (N, H, inCh/H, TLW) * (N, H, inCh/H, TLW) -> (N, H, TLW, TLW)
-        Soft = self.soft(Q.permute(0, 1, 3, 2)@K)
+        Out = Q.permute(0, 1, 3, 2)@K
         
-        # Multiply the softmax matrix by the values matrix
+        # Multiply the output matrix by the values matrix
         # (N, H, TLW, TLW) * (N, H, inCh/2H, TLW) -> (N, H, inCh/2H, TLW)
-        Soft = (Soft@V.permute(0, 1, 3, 2)).permute(0, 1, 3, 2)
+        Out = (Out@V.permute(0, 1, 3, 2)).permute(0, 1, 3, 2)
         
         # Unflatten the resulting tensor
         # (N, H, inCh/H, TLW) -> (N, H, inCh/H, T, L, W)
-        Soft = Soft.unflatten(-1, X.shape[2:])
+        Out = Out.unflatten(-1, X.shape[2:])
         
         # Reshape the tensor back to its original shape without heads
         # (N, H, inCh/H, T, L, W) -> (N, inCh, T, L, W)
-        Soft = self.remove_heads(Soft)
+        Out = self.remove_heads(Out)
         
         # Send the resulting tensor through the
         # final convolution to get the initial channels
-        Soft = self.O_conv(Soft)
+        Out = self.O_conv(Out)
         
         # Remove the temporal dimension if the temporal dimension
         # didn't exist in the input
         if not hasTemporal:
-            Soft = Soft.squeeze(2)
+            Out = Out.squeeze(2)
             X = X.squeeze(2)
         
         # Return the otuput with the input as a residual
-        return Soft + X
+        return self.batchNorm(Out + X)
