@@ -7,6 +7,7 @@ from src.blocks.BigGAN_ResUp_Deep import BigGAN_ResUp_Deep
 from src.blocks.BigGAN_ResDown_Deep import BigGAN_ResDown_Deep
 from src.blocks.BigGAN_ResDown import BigGAN_ResDown
 from src.blocks.Non_local import Non_local
+from src.blocks.Non_local_MH import Non_local_MH
 import torch
 
 
@@ -44,6 +45,15 @@ def test():
     
     # Non-local block (N, C, L, W) -> (N, C, L, W)
     NL = Non_local(C)
+    
+    # Feed the input through the non-local block
+    X = NL(X)
+    
+    # Output should be (N, C, L, W)
+    assert X.shape == (N, C, L, W)
+    
+    # Multi-Head Non-local block (N, C, L, W) -> (N, C, L, W)
+    NL = Non_local_MH(C, 5)
     
     # Feed the input through the non-local block
     X = NL(X)
