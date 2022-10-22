@@ -53,10 +53,19 @@ def test():
     assert X.shape == (N, C, L, W)
     
     # Multi-Head Non-local block (N, C, L, W) -> (N, C, L, W)
-    NL = Non_local_MH(C, 5)
+    NL2 = Non_local_MH(C, 5)
     
     # Feed the input through the non-local block
-    X = NL(X)
+    X = NL2(X)
+    
+    # Output should be (N, C, L, W)
+    assert X.shape == (N, C, L, W)
+    
+    # Multi-Head Non-local block using 4 resolution (N, C, L, W) -> (N, C, L, W)
+    NL3 = Non_local_MH(C, head_res=4)
+    
+    # Feed the input through the non-local block
+    X = NL3(X)
     
     # Output should be (N, C, L, W)
     assert X.shape == (N, C, L, W)

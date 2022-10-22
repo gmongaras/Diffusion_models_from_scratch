@@ -10,11 +10,21 @@ class Non_local_MH(nn.Module):
     #   inCh - Number of input channels
     #   num_heads - Number of heads in the multi-head
     #               non-local block
-    def __init__(self, inCh, num_heads):
+    #   head_res - Optional parameter. Specify the resolution each
+    #              head operates at rather than the number of heads. If
+    #              this is not None, num_heads is ignored
+    def __init__(self, inCh, num_heads=2, head_res=None):
         super(Non_local_MH, self).__init__()
         self.num_heads = num_heads
         
-        assert inCh%num_heads == 0, "Number of channels must be divisible by the number of heads"
+        if head_res == None:
+            assert inCh%num_heads == 0, "Number of channels must be divisible by the number of heads"
+        else:
+            assert inCh%head_res == 0, "Number of channels must be divisible by the head resolution"
+        
+        # Get the number of heads using the head resolution
+        if head_res != None:
+            self.num_heads = inCh//head_res
         
         # Query, Key, Value convolutions
         self.Q_conv = nn.Conv3d(inCh, inCh, 1)
