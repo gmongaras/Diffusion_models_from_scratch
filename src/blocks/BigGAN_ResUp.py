@@ -22,7 +22,7 @@ class BigGAN_ResUp(nn.Module):
         
         # Residual connection
         self.Res = nn.Sequential(
-            nn.Upsample(scale_factor=2),            # (N, inCh, 2L, 2W)
+            nn.Upsample(scale_factor=2),             # (N, inCh, 2L, 2W)
             nn.Conv2d(inCh, outCh, 1)                # (N, outCh, 2L, 2W)
         )
         
