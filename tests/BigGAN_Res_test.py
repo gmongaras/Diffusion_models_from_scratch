@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.abspath('./src'))
 
 from src.blocks.BigGAN_ResUp import BigGAN_ResUp
 from src.blocks.BigGAN_Res import BigGAN_Res
+from src.blocks.BigGAN_Res_Deep import BigGAN_Res_Deep
 from src.blocks.BigGAN_ResUp_Deep import BigGAN_ResUp_Deep
 from src.blocks.BigGAN_ResDown_Deep import BigGAN_ResDown_Deep
 from src.blocks.BigGAN_ResDown import BigGAN_ResDown
@@ -76,6 +77,16 @@ def test():
     
     # Feed the input through the non-local block
     X = NL3(X)
+    
+    # Output should be (N, C, L, W)
+    assert X.shape == (N, C, L, W)
+    
+    
+    # Deep Res Block block (N, C, L, W) -> (N, C, L, W)
+    Res2 = BigGAN_Res_Deep(C, C)
+    
+    # Feed the input through the non-local block
+    X = Res2(X)
     
     # Output should be (N, C, L, W)
     assert X.shape == (N, C, L, W)

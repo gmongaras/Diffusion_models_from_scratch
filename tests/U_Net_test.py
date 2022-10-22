@@ -32,6 +32,18 @@ def test():
     
     
     
+    # Deep U-net
+    del net
+    net = U_Net(inCh, embCh, scale, num_heads, res_blocks, useDeep=True)
+    
+    # Send the input through the U-net
+    batch = net(batch)
+    
+    # The shapes should be the same
+    assert batch_shape == batch.shape
+    
+    
+    
     
     
 if __name__ == "__main__":
