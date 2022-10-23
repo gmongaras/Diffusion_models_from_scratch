@@ -1,6 +1,7 @@
 import zipfile
 import pickle
 import torch
+from .models.diff_model import diff_model
 
 
 
@@ -40,9 +41,15 @@ def main():
     
     
     ### Model Creation
-    from .blocks.PixelCNN_Residual import PixelCNN_Residual
-    a = PixelCNN_Residual(3, "B")
-    a(torch.rand(32, 3, 16, 16))
+    inCh = 3
+    embCh = 128
+    chMult = 2
+    num_heads = 8
+    num_res_blocks = 2
+    T = 500
+    beta_sched = "cosine"
+    model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched)
+    model.noise_batch(torch.rand(32, 3, 16, 16), 100)
     
     
     
