@@ -25,14 +25,14 @@ class diff_model(nn.Module):
         self.beta_sched = beta_sched
         
         # U_net model
-        self.unet = U_Net(inCh, embCh, chMult, num_heads, num_res_blocks, useDeep)
+        self.unet = U_Net(inCh, inCh*2, embCh, chMult, num_heads, num_res_blocks, useDeep)
         
         # What scheduler should be used to add noise
         # to the data?
         if self.beta_sched == "cosine":
             def f(t):
                 s = 0.008
-                return torch.cos(torch.tensor(((t/T + s)/(1+s)) * torch.pi/2))**2 /\
+                return torch.cos(((t/T + s)/(1+s)) * torch.pi/2)**2 /\
                     torch.cos(torch.tensor((s/(1+s)) * torch.pi/2))**2
             self.beta_sched_funct = f
         else: # Linear
@@ -40,19 +40,26 @@ class diff_model(nn.Module):
         
     # Used to noise an image by t timesteps
     def noise_batch(self, X, t):
+        # Make sure t isn't too large
+        t = min(t, self.T)
+        
         # Sample gaussian noise
         epsilon = torch.randn_like(X)
         
         # The value of a_bar_t at timestep t depending on the scheduler
         if self.beta_sched == "cosine":
             a_t_bar = self.beta_sched_funct(torch.tensor(t))
-            a_t_bar = torch.clamp(a_t_bar, 0, 0.999)
         else:
-            a_t = 1-self.beta_sched_funct[t]
-            a_t_bar = a_t**t
+            a_t = 1-self.beta_sched_funct[:t] # 1-B_t
+            a_t_bar = torch.prod(a_t, dim=-1) # Pi [a_s]
         
         # Noise the images
         return torch.sqrt(a_t_bar)*X + torch.sqrt(1-a_t_bar)*epsilon
         
-    def forward():
-        pass
+        
+        
+    def forward(self, x_t):
+        # Send the input through the U-net to get
+        # the mean and std of the gaussian distributions
+        # for the image x_t-1
+        return self.unet(x_t)

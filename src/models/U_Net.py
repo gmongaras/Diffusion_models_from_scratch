@@ -17,13 +17,14 @@ from ..blocks.Non_local_MH import Non_local_MH
 
 class U_Net(nn.Module):
     # inCh - Number of input channels in the input batch
+    # outCh - Number of output channels in the output batch
     # embCh - Number of channels to embed the batch to
     # chMult - Multiplier to scale the number of channels by
     #          for each up/down sampling block
     # num_heads - Number of heads in each multi-head non-local block
     # num_res_blocks - Number of residual blocks on the up/down path
     # useDeep - True to use deep residual blocks, False to use not deep residual blocks
-    def __init__(self, inCh, embCh, chMult, num_heads, num_res_blocks, useDeep=False):
+    def __init__(self, inCh, outCh, embCh, chMult, num_heads, num_res_blocks, useDeep=False):
         super(U_Net, self).__init__()
         
         # What type of block should be used? deep or not deep?
@@ -67,7 +68,7 @@ class U_Net(nn.Module):
             blocks.append(resBlock(embCh*(chMult*i), embCh*(chMult*i)))
             blocks.append(Non_local_MH(embCh*(chMult*i), num_heads))
             if i == 1:
-                blocks.append(upBlock(embCh*(chMult*i), inCh))
+                blocks.append(upBlock(embCh*(chMult*i), outCh))
             else:
                 blocks.append(upBlock(embCh*(chMult*i), embCh*(chMult*(i-1))))
         self.upSamp = nn.Sequential(

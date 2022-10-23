@@ -18,7 +18,7 @@ def test():
     scale = 2
     num_heads = 8
     res_blocks = 2
-    net = U_Net(inCh, embCh, scale, num_heads, res_blocks)
+    net = U_Net(inCh, inCh, embCh, scale, num_heads, res_blocks)
     
     # Random input batch
     batch = torch.rand((N, inCh, L, W))
@@ -34,7 +34,7 @@ def test():
     
     # Deep U-net
     del net
-    net = U_Net(inCh, embCh, scale, num_heads, res_blocks, useDeep=True)
+    net = U_Net(inCh, inCh, embCh, scale, num_heads, res_blocks, useDeep=True)
     
     # Send the input through the U-net
     batch = net(batch)
