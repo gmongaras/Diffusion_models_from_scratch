@@ -2,6 +2,9 @@ import zipfile
 import pickle
 import torch
 from .models.diff_model import diff_model
+import numpy as np
+from PIL import Image
+from .model_trainer import model_trainer
 
 
 
@@ -44,12 +47,20 @@ def main():
     inCh = 3
     embCh = 128
     chMult = 2
-    num_heads = 8
-    num_res_blocks = 2
+    num_heads = 2
+    num_res_blocks = 1
     T = 500
     beta_sched = "cosine"
     model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched)
-    model.noise_batch(torch.rand(32, 3, 16, 16), 100)
+    
+    # Load in a test image
+    filePath = "./tests/testimg.gif"
+    im = np.array(Image.open(filePath).convert("RGB")).astype(float)
+    im = torch.tensor(im).permute(2, 0, 1).unsqueeze(0).to(torch.float32)
+    
+    # Train the model
+    trainer = model_trainer(model, 1, 10, 0.1, "cpu")
+    trainer.train(im)
     
     
     

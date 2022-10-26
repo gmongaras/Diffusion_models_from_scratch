@@ -1,4 +1,3 @@
-import torch
 from torch import nn
 from ..blocks.BigGAN_ResDown import BigGAN_ResDown
 from ..blocks.BigGAN_ResUp import BigGAN_ResUp

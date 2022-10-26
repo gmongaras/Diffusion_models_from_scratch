@@ -29,13 +29,14 @@ def test():
     
     # Does unnoising the image work?
     with torch.no_grad():
-        un_im = model(torch.tensor(im).to(torch.float32).permute(2, 1, 0).unsqueeze(0)).squeeze().permute(1, 2, 0)
+        un_im = model(torch.tensor(im).to(torch.float32).permute(2, 1, 0).unsqueeze(0))
         
-        # Output should have twice as many channels
-        assert un_im.shape == (width, height, channels*2)
+        # Output should two tensors of the same shape
+        assert un_im[0].squeeze().shape == (channels, width, height)
+        assert un_im[1].squeeze().shape == (channels, width, height)
     
     # Noise the image and show it
-    plt.imshow(model.noise_batch(torch.tensor(im), t))
+    plt.imshow(model.noise_batch(torch.tensor(im)[0], torch.tensor(t).unsqueeze(0)))
     plt.show()
 
 

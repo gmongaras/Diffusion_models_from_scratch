@@ -8,10 +8,10 @@
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
-            //"module": "src.main",
+            "module": "src.main",
             //"module": "tests.BigGAN_Res_test",
             //"module": "tests.U_Net_test",
-            "module": "tests.diff_model_noise_test",
+            //"module": "tests.diff_model_noise_test",
             "console": "integratedTerminal",
             "justMyCode": false
         }

@@ -5,7 +5,6 @@ from .ConditionalBatchNorm2D import ConditionalBatchNorm2d
 
 
 
-# 
 class BigGAN_ResUp(nn.Module):
     # Inputs:
     #   inCh - Number of channels the input batch has
