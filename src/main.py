@@ -50,16 +50,20 @@ def main():
     num_heads = 2
     num_res_blocks = 1
     T = 500
+    Lambda = 0.0001
     beta_sched = "cosine"
+    batchSize = 2
+    device = "cpu"
     model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched)
     
     # Load in a test image
     filePath = "./tests/testimg.gif"
     im = np.array(Image.open(filePath).convert("RGB")).astype(float)
     im = torch.tensor(im).permute(2, 0, 1).unsqueeze(0).to(torch.float32)
+    im = im.repeat(2, 1, 1, 1)
     
     # Train the model
-    trainer = model_trainer(model, 1, 10, 0.1, "cpu")
+    trainer = model_trainer(model, batchSize, 10, 0.1, device, Lambda)
     trainer.train(im)
     
     

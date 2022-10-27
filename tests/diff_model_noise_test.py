@@ -14,7 +14,7 @@ import torch
 def test():
     filePath = "./tests/testimg.gif"
     T = 500
-    beta_sched = "cosine"
+    beta_sched = "linear"
     t = 400
     
     # Load in the image as an RGB numpy array
@@ -34,6 +34,10 @@ def test():
         # Output should two tensors of the same shape
         assert un_im[0].squeeze().shape == (channels, width, height)
         assert un_im[1].squeeze().shape == (channels, width, height)
+    
+    # What does the noise look like at time t-1 and time t?
+    batch_x_t1, epsilon_t1 = model.noise_batch(torch.tensor(im)[0], torch.tensor(t).unsqueeze(0)-1)
+    batch_x_t, epsilon_t = model.noise_batch(torch.tensor(im)[0], torch.tensor(t).unsqueeze(0))
     
     # Noise the image and show it
     plt.imshow(model.noise_batch(torch.tensor(im)[0], torch.tensor(t).unsqueeze(0)))
