@@ -54,6 +54,8 @@ def main():
     beta_sched = "cosine"
     batchSize = 2
     device = "cpu"
+    epochs = 10
+    lr = 0.0001
     model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched)
     
     # Load in a test image
@@ -63,7 +65,7 @@ def main():
     im = im.repeat(2, 1, 1, 1)
     
     # Train the model
-    trainer = model_trainer(model, batchSize, 10, 0.1, device, Lambda)
+    trainer = model_trainer(model, batchSize, epochs, lr, device, Lambda)
     trainer.train(im)
     
     

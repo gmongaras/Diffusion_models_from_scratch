@@ -81,8 +81,8 @@ class model_trainer():
         # Using the mean and variance, send the noised image
         # at time x_t through the distribution with the
         # given mean and variance
-        x_t1_pred = (1/(var_t*torch.sqrt(torch.tensor(2*torch.pi))))*torch.exp((-1/2)*((x_t-mean_t)/var_t)**2)
-        x_t1_pred += 0.1e-4 # Residual for small probabilities
+        x_t1_pred = self.model.normal_dist(x_t, mean_t, var_t)
+        x_t1_pred += 1e-5 # Residual for small probabilities
         
         # Convert the x_t-1 values to p and q for easier notation
         p = x_t1_pred # Predictions

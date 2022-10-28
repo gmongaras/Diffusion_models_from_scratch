@@ -177,3 +177,48 @@ class diff_model(nn.Module):
         vs = out[:, self.inCh:]
         
         return noise, vs
+    
+    
+    
+    # Given the mean, variance, and input for a normal distribution,
+    # return the output value of the input in the distribution
+    # Inputs:
+    #   x - Input into the distribution
+    #   mean - Distribution mean
+    #   var - DIstribution variance
+    #   - Note: x, mean, and var should have the same shape
+    # Outputs:
+    #   Distribution applied to x of the same shape as x
+    def normal_dist(self, x, mean, var):
+        return (1/(var*torch.sqrt(torch.tensor(2*torch.pi))))*torch.exp((-1/2)*((x-mean)/var)**2)
+    
+    
+    
+    # Given a batch of images, unoise them using the current models's state
+    # Inputs:
+    #   x_t - Batch of images at the given value of t of shape (N, C, L, W)
+    #   t - Batch of t values of shape (N) or a single t value
+    # Outputs:
+    #   Image of shape (N, C, L, W) at timestep t-1, unnoised by one timestep
+    def unnoise_batch(self, x_t, t):
+        if type(t) == int or type(t) == float:
+            t = torch.tensor(t).repeat(x_t.shape[0]).to(torch.long)
+        elif type(t) == list and type(t[0]) == int:
+            t = torch.tensor(t).to(torch.long)
+        elif type(t) == torch.Tensor:
+            if len(t.shape) == 0:
+                t = t.repeat(x_t.shape[0]).to(torch.long)
+        else:
+            print(f"t values must either be a scalar, list of scalars, or a tensor of scalars, not type: {type(t)}")
+            return
+        
+        # Get the model predictions
+        noise_t, vs = self.forward(x_t)
+        
+        # Convert the noise to a mean and
+        # the vs to variances
+        mean_t = self.noise_to_mean(noise_t, x_t, t)
+        var_t = self.vs_to_variance(vs, t)
+        
+        # Get the output of the predicted normal distribution
+        return self.normal_dist(x_t, mean_t, var_t)
