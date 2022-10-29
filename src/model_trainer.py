@@ -150,7 +150,7 @@ class model_trainer():
             
             # Send the noised data through the model to get the
             # predicted noise and variance for batch at t-1
-            epsilon_t1_pred, v_t1_pred = self.model(batch_x_t)
+            epsilon_t1_pred, v_t1_pred = self.model(batch_x_t, t_vals)
             
             # Get the loss
             loss = self.lossFunct(epsilon_real, epsilon_t1_pred, v_t1_pred, 

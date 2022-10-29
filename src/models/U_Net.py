@@ -20,10 +20,11 @@ class U_Net(nn.Module):
     # embCh - Number of channels to embed the batch to
     # chMult - Multiplier to scale the number of channels by
     #          for each up/down sampling block
+    # t_dim - Vector size for the supplied t vector
     # num_heads - Number of heads in each multi-head non-local block
     # num_res_blocks - Number of residual blocks on the up/down path
     # useDeep - True to use deep residual blocks, False to use not deep residual blocks
-    def __init__(self, inCh, outCh, embCh, chMult, num_heads, num_res_blocks, useDeep=False):
+    def __init__(self, inCh, outCh, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep=False):
         super(U_Net, self).__init__()
         
         # What type of block should be used? deep or not deep?
@@ -67,9 +68,10 @@ class U_Net(nn.Module):
             blocks.append(resBlock(embCh*(chMult*i), embCh*(chMult*i)))
             blocks.append(Non_local_MH(embCh*(chMult*i), num_heads))
             if i == 1:
-                blocks.append(upBlock(embCh*(chMult*i), outCh))
+                blocks.append(upBlock(embCh*(chMult*i), outCh, useCls=True, cls_dim=t_dim))
             else:
-                blocks.append(upBlock(embCh*(chMult*i), embCh*(chMult*(i-1))))
+                blocks.append(upBlock(embCh*(chMult*i), embCh*(chMult*(i-1)), useCls=True, cls_dim=t_dim))
+        blocks.append(resBlock(outCh, outCh))
         self.upSamp = nn.Sequential(
             *blocks
         )
@@ -77,7 +79,9 @@ class U_Net(nn.Module):
     
     # Input:
     #   X - Tensor of shape (N, Ch, L, W)
-    def forward(self, X):
+    #   t - (Optional) Batch of encoded t values for each 
+    #       X value of shape (N, E)
+    def forward(self, X, t=None):
         # Send the input through the downsampling blocks
         X = self.downSamp(X)
         
@@ -87,6 +91,13 @@ class U_Net(nn.Module):
         
         # Send the intermediate batch through the upsampling
         # block to get the original shape
-        X = self.upSamp(X)
+        if t == None:
+            X = self.upSamp(X)
+        else:
+            for b in self.upSamp:
+                try: # Does the block support class encodings?
+                    X = b(X, t)
+                except TypeError:
+                    X = b(X)
         
         return X

@@ -56,7 +56,8 @@ def main():
     device = "cpu"
     epochs = 10
     lr = 0.0001
-    model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched)
+    t_dim = 100
+    model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched, t_dim)
     
     # Load in a test image
     filePath = "./tests/testimg.gif"

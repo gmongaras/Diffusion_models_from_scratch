@@ -25,7 +25,7 @@ def test():
     channels = im.shape[2]
     
     # Create the model
-    model = diff_model(channels, 100, 1, 1, 1, T, beta_sched)
+    model = diff_model(channels, 100, 1, 1, 1, T, beta_sched, 100)
     
     # Does unnoising the image work?
     with torch.no_grad():

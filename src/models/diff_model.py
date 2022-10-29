@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from .U_Net import U_Net
 from ..helpers.image_rescale import reduce_image, unreduce_image
+from ..blocks.PositionalEncoding import PositionalEncoding
 
 
 
@@ -18,8 +19,9 @@ class diff_model(nn.Module):
     # T - Max number of diffusion steps
     # beta_sched - Scheduler for the beta noise term (linear or cosine)
     # useDeep - True to use deep residual blocks, False to use not deep residual blocks
+    # t_dim - Embedding dimenion for the timesteps
     def __init__(self, inCh, embCh, chMult, num_heads, num_res_blocks,
-                 T, beta_sched, useDeep=False):
+                 T, beta_sched, t_dim, useDeep=False):
         super(diff_model, self).__init__()
         
         self.T = torch.tensor(T)
@@ -27,7 +29,7 @@ class diff_model(nn.Module):
         self.inCh = inCh
         
         # U_net model
-        self.unet = U_Net(inCh, inCh*2, embCh, chMult, num_heads, num_res_blocks, useDeep)
+        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep)
         
         # What scheduler should be used to add noise
         # to the data?
@@ -39,6 +41,9 @@ class diff_model(nn.Module):
             self.beta_sched_funct = f
         else: # Linear
             self.beta_sched_funct = torch.linspace(1e-4, 0.02, T)
+            
+        # Used to embed the values of t so the model can use it
+        self.t_emb = PositionalEncoding(t_dim)
             
             
             
@@ -161,14 +166,33 @@ class diff_model(nn.Module):
         
     # Input:
     #   x_t - Batch of images of shape (B, C, L, W)
+    #   t - (Optional) Batch of t values of shape (N) or a single t value
     # Outputs:
     #   noise - Batch of noise predictions of shape (B, C, L, W)
     #   vs - Batch of v matrix predictions of shape (B, C, L, W)
-    def forward(self, x_t):
+    def forward(self, x_t, t):
+        
+        # Make sure t is in the correct form
+        if t != None:
+            if type(t) == int or type(t) == float:
+                t = torch.tensor(t).repeat(x_t.shape[0]).to(torch.long)
+            elif type(t) == list and type(t[0]) == int:
+                t = torch.tensor(t).to(torch.long)
+            elif type(t) == torch.Tensor:
+                if len(t.shape) == 0:
+                    t = t.repeat(x_t.shape[0]).to(torch.long)
+            else:
+                print(f"t values must either be a scalar, list of scalars, or a tensor of scalars, not type: {type(t)}")
+                return
+            
+            # Encode the timesteps
+            if len(t.shape) == 1:
+                t = self.t_emb(t)
+        
         # Send the input through the U-net to get
         # the mean and std of the gaussian distributions
         # for the image x_t-1
-        out = self.unet(x_t)
+        out = self.unet(x_t, t)
         
         # Get the noise prediction from the output
         noise = out[:, :self.inCh]
@@ -207,6 +231,7 @@ class diff_model(nn.Module):
         if x_t.max() <= 1.0:
             x_t = reduce_image(x_t)
         
+        # Make sure t is in the correct form
         if type(t) == int or type(t) == float:
             t = torch.tensor(t).repeat(x_t.shape[0]).to(torch.long)
         elif type(t) == list and type(t[0]) == int:
@@ -219,7 +244,7 @@ class diff_model(nn.Module):
             return
         
         # Get the model predictions
-        noise_t, vs = self.forward(x_t)
+        noise_t, vs = self.forward(x_t, t)
         
         # Convert the noise to a mean and
         # the vs to variances
