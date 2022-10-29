@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from .U_Net import U_Net
+from .helpers.image_rescale import reduce_image, unreduce_image
 
 
 
@@ -201,6 +202,11 @@ class diff_model(nn.Module):
     # Outputs:
     #   Image of shape (N, C, L, W) at timestep t-1, unnoised by one timestep
     def unnoise_batch(self, x_t, t):
+        
+        # Scale the image to (-1, 1)
+        if x_t.max() <= 1.0:
+            x_t = reduce_image(x_t)
+        
         if type(t) == int or type(t) == float:
             t = torch.tensor(t).repeat(x_t.shape[0]).to(torch.long)
         elif type(t) == list and type(t[0]) == int:
@@ -221,4 +227,7 @@ class diff_model(nn.Module):
         var_t = self.vs_to_variance(vs, t)
         
         # Get the output of the predicted normal distribution
-        return self.normal_dist(x_t, mean_t, var_t)
+        out = self.normal_dist(x_t, mean_t, var_t)
+        
+        # Return the image scaled to (0, 255)
+        return unreduce_image(out)

@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from .helpers.image_rescale import reduce_image, unreduce_image
 
 
 cpu = torch.device('cpu')
@@ -65,6 +66,8 @@ class model_trainer():
     # Inputs:
     #   epsilon - True epsilon values of shape (N, C, L, W)
     #   epsilon_pred - Predicted epsilon values of shape (N, C, L, W)
+    # Outputs:
+    #   Scalar loss value over the entire batch
     def loss_simple(self, epsilon, epsilon_pred):
         return self.norm_2(epsilon, epsilon_pred).mean()
     
@@ -97,9 +100,15 @@ class model_trainer():
         return loss
     
     
-    # Loss functions
+    # Combined loss
     # Inputs:
-    #   epsilon  
+    #   epsilon - True epsilon values of shape (N, C, L, W)
+    #   epsilon_pred - Predicted epsilon values of shape (N, C, L, W)
+    #   x_t - The noised image at time t of shape (N, C, L, W)
+    #   x_t1 - The unnoised image at time t-1 of shape (N, C, L, W)
+    #   t - The value timestep of shape (N)
+    # Outputs:
+    #   Loss as a scalar over the entire batch
     def lossFunct(self, epsilon, epsilon_pred, v, x_t, x_t1, t):
         # Get the mean and variance from the model
         mean_t = self.model.noise_to_mean(epsilon_pred, x_t, t)
@@ -118,6 +127,10 @@ class model_trainer():
     # Inputs:
     #   X - A batch of images of shape (B, C, L, W)
     def train(self, X):
+        
+        # Scale the image to (-1, 1)
+        if X.max() <= 1.0:
+            X = reduce_image(X)
         
         for epoch in range(1, self.epochs+1):
             # Get a sample of `batchSize` number of images
