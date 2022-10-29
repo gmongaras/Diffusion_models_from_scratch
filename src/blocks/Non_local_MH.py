@@ -27,21 +27,21 @@ class Non_local_MH(nn.Module):
             self.num_heads = inCh//head_res
         
         # Query, Key, Value convolutions
-        self.Q_conv = nn.Conv3d(inCh, inCh, 1)
-        self.K_conv = nn.Conv3d(inCh, inCh, 1)
-        self.V_conv = nn.Conv3d(inCh, inCh, 1)
+        self.Q_conv = nn.Conv2d(inCh, inCh, 1)
+        self.K_conv = nn.Conv2d(inCh, inCh, 1)
+        self.V_conv = nn.Conv2d(inCh, inCh, 1)
         
         # Output convolution
-        self.O_conv = nn.Conv3d(inCh, inCh, 1)
+        self.O_conv = nn.Conv2d(inCh, inCh, 1)
         
         # Batch normalization
         self.batchNorm = nn.BatchNorm2d(inCh)
         
     # Given a tensor, the tensor is extended to multiple heads
     # Inputs:
-    #   X - tensor of shape (N, inCh, T, L, W)
+    #   X - tensor of shape (N, inCh, L, W)
     # Outputs:
-    #   Tensor of shape (N, H, inCh/H, T, L, W)
+    #   Tensor of shape (N, H, inCh/H, L, W)
     def add_heads(self, X):
         X_shape = X.shape
         return X.reshape(X_shape[0], self.num_heads, X_shape[1]//self.num_heads, *X_shape[2:])
@@ -49,69 +49,60 @@ class Non_local_MH(nn.Module):
     
     # Given a tensor, the tensor is contracted to remove the heads
     # Inputs:
-    #   X - tensor of shape (N, H, inCh/H, T, L, W)
+    #   X - tensor of shape (N, H, inCh/H, L, W)
     # Outputs:
-    #   Tensor of shape (N, inCh, T, L, W)
+    #   Tensor of shape (N, inCh, L, W)
     def remove_heads(self, X):
         X_shape = X.shape
         return X.reshape(X_shape[0], X_shape[1]*X_shape[2], *X_shape[3:])
         
     # Inputs:
-    #   X - tensor of shape (N, inCh, L, W) or tensor of shape (N, inCh, T, L, W)
+    #   X - tensor of shape (N, inCh, L, W)
     # Outputs:
-    #   Tensor of shape (N, inCh, L, W) or (N, inCh, T, L, W)
+    #   Tensor of shape (N, inCh, L, W)
     def forward(self, X):
-        # Does the input have a temporal dimension?
-        hasTemporal = False
-        if len(X.shape) > 4:
-            hasTemporal = True
-            
-        # If the input is not temporal, make it temporal
-        # (N, inCh, L, W) -> (N, inCh, T, L, W)
-        if hasTemporal == False:
-            X = X.unsqueeze(2)
-        
         # Get the key, query, and values
-        # X: (N, inCh, T, L, W) -> (N, inCh, T, L, W)
+        # X: (N, inCh, L, W) -> (N, inCh, L, W)
         K, Q, V = self.Q_conv(X), self.K_conv(X), self.V_conv(X)
         
         # Add H number of heads to each of the embeddings
-        # (N, inCh, T, L, W) -> (N, H, inCh/H, T, L, W)
+        # (N, inCh, L, W) -> (N, H, inCh/H, L, W)
         K = self.add_heads(K)
         Q = self.add_heads(Q)
         V = self.add_heads(V)
         
-        # Combine the temporal, length, and width dimenions
-        # (N, H, inCh/H, T, L, W) -> (N, H, inCh/H, TLW)
+        # Combine the length and width dimenions
+        # (N, H, inCh/H, L, W) -> (N, H, inCh/H, LW)
         K = K.flatten(start_dim=3)
         Q = Q.flatten(start_dim=3)
         V = V.flatten(start_dim=3)
         
         # Multiply the query and key along the channels 
-        # (N, H, inCh/H, TLW) * (N, H, inCh/H, TLW) -> (N, H, TLW, TLW)
-        Out = Q.permute(0, 1, 3, 2)@K
+        # (N, H, inCh/H, LW) * (N, H, inCh/H, LW) -> (N, H, inCh/H, inCh/H)
+        """
+        Note, the original Non-local paper multiplies the matrices
+        to produce a tensor of shape (N, H, TLW, TLW), but this
+        produces massive gradients. Also, the original attention
+        paper essentially multiplied so the output was (N, H, S, S)
+        which is essentially the same as what I'm doing, (N, H, C, C)
+        """
+        Out = Q@K.permute(0, 1, 3, 2)
         
         # Multiply the output matrix by the values matrix
-        # (N, H, TLW, TLW) * (N, H, inCh/2H, TLW) -> (N, H, inCh/2H, TLW)
-        Out = (Out@V.permute(0, 1, 3, 2)).permute(0, 1, 3, 2)
+        # (N, H, inCh/H, inCh/H) * (N, H, inCh/H, TLW) -> (N, H, inCh/H, TLW)
+        Out = Out@V
         
         # Unflatten the resulting tensor
-        # (N, H, inCh/H, TLW) -> (N, H, inCh/H, T, L, W)
+        # (N, H, inCh/H, LW) -> (N, H, inCh/H, L, W)
         Out = Out.unflatten(-1, X.shape[2:])
         
         # Reshape the tensor back to its original shape without heads
-        # (N, H, inCh/H, T, L, W) -> (N, inCh, T, L, W)
+        # (N, H, inCh/H, L, W) -> (N, inCh, L, W)
         Out = self.remove_heads(Out)
         
         # Send the resulting tensor through the
         # final convolution to get the initial channels
         Out = self.O_conv(Out)
-        
-        # Remove the temporal dimension if the temporal dimension
-        # didn't exist in the input
-        if not hasTemporal:
-            Out = Out.squeeze(2)
-            X = X.squeeze(2)
         
         # Return the otuput with the input as a residual
         return self.batchNorm(Out + X)

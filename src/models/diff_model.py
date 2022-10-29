@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from .U_Net import U_Net
-from .helpers.image_rescale import reduce_image, unreduce_image
+from ..helpers.image_rescale import reduce_image, unreduce_image
 
 
 
