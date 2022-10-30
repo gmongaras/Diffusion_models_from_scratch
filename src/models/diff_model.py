@@ -57,17 +57,20 @@ class diff_model(nn.Module):
     #     a_bar_t
     def get_scheduler_info(self, t):
         # Values depend on the scheduler
+        t = torch.tensor(self.T)
         if self.beta_sched == "cosine":
             # Beta_t, a_t, and a_bar_t
             # using the cosine scheduler
             a_bar_t = self.beta_sched_funct(t)
             a_bar_t1 = self.beta_sched_funct(t-1)
             beta_t = 1-(a_bar_t/(a_bar_t1))
+            beta_t = torch.clamp(beta_t, None, 0.999)
             a_t = 1-beta_t
         else:
             # Beta_t, a_t, and a_bar_t
             # using the linear scheduler
             beta_t = self.beta_sched_funct[:t]
+            beta_t = torch.clamp(beta_t, None, 0.999)
             a_t = 1-beta_t
             a_bar_t = torch.prod(a_t, dim=-1)
             
