@@ -20,16 +20,33 @@ class diff_model(nn.Module):
     # beta_sched - Scheduler for the beta noise term (linear or cosine)
     # useDeep - True to use deep residual blocks, False to use not deep residual blocks
     # t_dim - Embedding dimenion for the timesteps
+    # device - Device to put the model on (gpu or cpu)
     def __init__(self, inCh, embCh, chMult, num_heads, num_res_blocks,
-                 T, beta_sched, t_dim, useDeep=False):
+                 T, beta_sched, t_dim, device, useDeep=False):
         super(diff_model, self).__init__()
         
         self.T = torch.tensor(T)
         self.beta_sched = beta_sched
         self.inCh = inCh
+        self.device = device
+        
+        # Convert the device to a torch device
+        if device.lower() == "gpu":
+            if torch.cuda.is_available():
+                dev = device.lower()
+                device = torch.device('cuda:0')
+            else:
+                dev = "cpu"
+                print("GPU not available, defaulting to CPU. Please ignore this message if you do not wish to use a GPU\n")
+                device = torch.device('cpu')
+        else:
+            dev = device.lower()
+            device = torch.device('cpu')
+        self.device = device
+        self.dev = dev
         
         # U_net model
-        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep)
+        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep).to(device)
         
         # What scheduler should be used to add noise
         # to the data?
@@ -43,7 +60,7 @@ class diff_model(nn.Module):
             self.beta_sched_funct = torch.linspace(1e-4, 0.02, T)
             
         # Used to embed the values of t so the model can use it
-        self.t_emb = PositionalEncoding(t_dim)
+        self.t_emb = PositionalEncoding(t_dim).to(device)
             
             
             

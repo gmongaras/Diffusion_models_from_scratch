@@ -65,15 +65,15 @@ def main():
     filePath = "./tests/testimg.gif"
     im = np.array(Image.open(filePath).convert("RGB")).astype(float)
     im = torch.tensor(im).permute(2, 0, 1).unsqueeze(0).to(torch.float32)
-    im = im.repeat(2, 1, 1, 1)
+    im = im.repeat(batchSize, 1, 1, 1)
     
     # Train the model
     trainer = model_trainer(model, batchSize, epochs, lr, device, Lambda)
-    # trainer.train(im)
+    trainer.train(im)
     
     # What does a sample image look like?
     noise = torch.randn_like(im[:1])
-    for t in range(T, 0, -1):
+    for t in range(T, -1, -1):
         with torch.no_grad():
             noise = model.unnoise_batch(noise, t)
             

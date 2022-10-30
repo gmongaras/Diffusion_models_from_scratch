@@ -15,7 +15,7 @@ class model_trainer():
     # batchSize - Batch size to train the model with
     # epochs - Number of epochs to train the model for
     # lr - Learning rate of the model optimizer
-    # device - Device to put the model and data on (cpu, gpu, or partgpu)
+    # device - Device to put the model and data on (gpu or cpu)
     def __init__(self, diff_model, batchSize, epochs, lr, device, Lambda):
         # Saved info
         self.T = diff_model.T
@@ -25,13 +25,10 @@ class model_trainer():
         self.Lambda = Lambda
         
         # Convert the device to a torch device
-        if device.lower() == "fullgpu":
+        if device.lower() == "gpu":
             if torch.cuda.is_available():
                 dev = device.lower()
                 device = torch.device('cuda:0')
-            elif torch.has_mps == True:
-                dev = "mps"
-                device = torch.device('mps')
             else:
                 dev = "cpu"
                 print("GPU not available, defaulting to CPU. Please ignore this message if you do not wish to use a GPU\n")
@@ -43,19 +40,16 @@ class model_trainer():
         self.dev = dev
         
         # Put the model on the desired device
-        if self.dev == "partgpu":
-            self.model.to(gpu)
-        else:
-            self.model.to(self.device)
+        self.model.to(self.device)
             
         # Uniform distribution for values of t
-        self.T_dist = torch.distributions.uniform.Uniform(float(1.0), float(self.T)) 
+        self.T_dist = torch.distributions.uniform.Uniform(float(1.0), float(self.T))
         
         # Optimizer
         self.optim = torch.optim.Adam(self.model.parameters(), lr=lr)
         
         # Loss function
-        self.KL = nn.KLDivLoss(reduction="none")
+        self.KL = nn.KLDivLoss(reduction="none").to(device)
         
         
     # Norm function over batches
@@ -128,16 +122,20 @@ class model_trainer():
     #   X - A batch of images of shape (B, C, L, W)
     def train(self, X):
         
+        # Put the data on the cpu
+        X = X.to(cpu)
+        
         # Scale the image to (-1, 1)
         if X.max() <= 1.0:
             X = reduce_image(X)
         
         for epoch in range(1, self.epochs+1):
-            # Get a sample of `batchSize` number of images
-            batch_x_0 = X[torch.randperm(X.shape[0])[:self.batchSize]]
+            # Get a sample of `batchSize` number of images and put
+            # it on the correct device
+            batch_x_0 = X[torch.randperm(X.shape[0])[:self.batchSize]].to(self.device)
             
             # Get values of t to noise the data
-            t_vals = self.T_dist.sample((self.batchSize,))
+            t_vals = self.T_dist.sample((self.batchSize,)).to(self.device)
             
             # Noise the batch to time t-1
             batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)
