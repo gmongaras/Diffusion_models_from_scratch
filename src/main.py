@@ -5,6 +5,8 @@ from .models.diff_model import diff_model
 import numpy as np
 from PIL import Image
 from .model_trainer import model_trainer
+import matplotlib.pyplot as plt
+from .helpers.image_rescale import reduce_image, unreduce_image
 
 
 
@@ -49,7 +51,7 @@ def main():
     chMult = 2
     num_heads = 2
     num_res_blocks = 1
-    T = 500
+    T = 400
     Lambda = 0.0001
     beta_sched = "cosine"
     batchSize = 2
@@ -67,7 +69,19 @@ def main():
     
     # Train the model
     trainer = model_trainer(model, batchSize, epochs, lr, device, Lambda)
-    trainer.train(im)
+    # trainer.train(im)
+    
+    # What does a sample image look like?
+    noise = torch.randn_like(im[:1])
+    for t in range(T, 0, -1):
+        with torch.no_grad():
+            noise = model.unnoise_batch(noise, t)
+            
+    # Convert the sample image to 0->255
+    # and show it
+    noise = unreduce_image(noise)
+    plt.imshow(noise[0].permute(1, 2, 0))
+    plt.savefig("fig.png")
     
     
     

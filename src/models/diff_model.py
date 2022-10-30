@@ -57,7 +57,6 @@ class diff_model(nn.Module):
     #     a_bar_t
     def get_scheduler_info(self, t):
         # Values depend on the scheduler
-        t = torch.tensor(self.T)
         if self.beta_sched == "cosine":
             # Beta_t, a_t, and a_bar_t
             # using the cosine scheduler
@@ -230,9 +229,9 @@ class diff_model(nn.Module):
     #   Image of shape (N, C, L, W) at timestep t-1, unnoised by one timestep
     def unnoise_batch(self, x_t, t):
         
-        # Scale the image to (-1, 1)
-        if x_t.max() <= 1.0:
-            x_t = reduce_image(x_t)
+        # # Scale the image to (-1, 1)
+        # if x_t.max() <= 1.0:
+        #     x_t = reduce_image(x_t)
         
         # Make sure t is in the correct form
         if type(t) == int or type(t) == float:
@@ -255,7 +254,9 @@ class diff_model(nn.Module):
         var_t = self.vs_to_variance(vs, t)
         
         # Get the output of the predicted normal distribution
-        out = self.normal_dist(x_t, mean_t, var_t)
+        # out = self.normal_dist(x_t, mean_t, var_t)
+        out = mean_t + torch.randn((mean_t.shape[0]))*torch.sqrt(var_t)
         
         # Return the image scaled to (0, 255)
-        return unreduce_image(out)
+        # return unreduce_image(out)
+        return out
