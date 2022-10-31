@@ -94,6 +94,29 @@ class model_trainer():
         return loss
     
     
+    
+    # Loss for the variance
+    def loss_variance(self, v, t):
+        # Get the beta values for this batch of ts
+        beta_t, _, a_bar_t = self.model.get_scheduler_info(t)
+        
+        # Beta values for the previous value of t
+        _, _, a_bar_t1 = self.model.get_scheduler_info(t-1)
+        
+        # Get the beta tilde value
+        beta_tilde_t = ((1-a_bar_t1)/(1-a_bar_t))*beta_t
+        beta_tilde_t = self.model.unsqueeze(beta_tilde_t, -1, 3)
+        
+        # KL loss between the v values and t values
+        # Depending on the value of t, get the loss
+        loss = torch.where(t==0,
+                    -torch.log(v).flatten(1,-1).sum(-1).mean(),
+                    self.KL(v, beta_tilde_t).flatten(1,-1).sum(-1).mean()
+        ).mean()
+        
+        return loss
+    
+    
     # Combined loss
     # Inputs:
     #   epsilon - True epsilon values of shape (N, C, L, W)
@@ -108,12 +131,21 @@ class model_trainer():
         mean_t = self.model.noise_to_mean(epsilon_pred, x_t, t)
         var_t = self.model.vs_to_variance(v, t)
         
+        """
+        Note: The paper states that the loss for the
+        variance should be L_vlb, but this is not what they
+        use in their implementation. Instead, they use
+        the KL divergence between the predictions and
+        the Beta_t_tilde values
+        """
+        
         # Get the losses
         loss_simple = self.loss_simple(epsilon, epsilon_pred)
-        loss_vlb = self.loss_vlb(x_t, x_t1, mean_t, var_t, t)
+        # loss_vlb = self.loss_vlb(x_t, x_t1, mean_t, var_t, t)
+        loss_var = self.loss_variance(var_t, t)
         
         # Return the combined loss
-        return loss_simple + self.Lambda*loss_vlb
+        return loss_simple + self.Lambda*loss_var
         
     
     

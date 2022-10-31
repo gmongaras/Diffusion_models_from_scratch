@@ -262,8 +262,11 @@ class diff_model(nn.Module):
             print(f"t values must either be a scalar, list of scalars, or a tensor of scalars, not type: {type(t)}")
             return
         
+        x_t = x_t.to(self.device)
+        t = t.to(self.device)
+        
         # Get the model predictions
-        noise_t, vs = self.forward(x_t, t)
+        noise_t, vs = self.forward(x_t.to(self.device), t)
         
         # Convert the noise to a mean and
         # the vs to variances
@@ -272,7 +275,7 @@ class diff_model(nn.Module):
         
         # Get the output of the predicted normal distribution
         # out = self.normal_dist(x_t, mean_t, var_t)
-        out = mean_t + torch.randn((mean_t.shape[0]))*torch.sqrt(var_t)
+        out = mean_t + torch.randn((mean_t.shape[0]), device=self.device)*torch.sqrt(var_t)
         
         # Return the image scaled to (0, 255)
         # return unreduce_image(out)
