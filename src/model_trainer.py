@@ -168,6 +168,7 @@ class model_trainer():
             
             # Get values of t to noise the data
             t_vals = self.T_dist.sample((self.batchSize,)).to(self.device)
+            t_vals = torch.round(t_vals).to(torch.long)
             
             # Noise the batch to time t-1
             batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)
@@ -179,12 +180,13 @@ class model_trainer():
             epsilon_real = epsilon_t-epsilon_t1
             
             # Send the noised data through the model to get the
-            # predicted noise and variance for batch at t-1
-            epsilon_t1_pred, v_t1_pred = self.model(batch_x_t, t_vals)
+            # predicted noise for batch at t-1
+            epsilon_t1_pred = self.model(batch_x_t, t_vals)
             
             # Get the loss
-            loss = self.lossFunct(epsilon_real, epsilon_t1_pred, v_t1_pred, 
-                                  batch_x_t, batch_x_t1, t_vals)
+            # loss = self.lossFunct(epsilon_real, epsilon_t1_pred, v_t1_pred, 
+            #                       batch_x_t, batch_x_t1, t_vals)
+            loss = self.loss_simple(epsilon_real, epsilon_t1_pred)
             
             # Optimize the model
             loss.backward()

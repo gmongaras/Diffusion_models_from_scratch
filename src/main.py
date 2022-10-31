@@ -53,9 +53,9 @@ def main():
     num_res_blocks = 1
     T = 400
     Lambda = 0.0001
-    beta_sched = "cosine"
+    beta_sched = "linear"
     batchSize = 2
-    device = "cpu"
+    device = "gpu"
     epochs = 10
     lr = 0.0001
     t_dim = 100
