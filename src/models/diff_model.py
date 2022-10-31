@@ -57,7 +57,7 @@ class diff_model(nn.Module):
                     torch.cos(torch.tensor((s/(1+s)) * torch.pi/2))**2
             self.beta_sched_funct = f
         else: # Linear
-            self.beta_sched_funct = torch.linspace(1e-4, 0.02, T)
+            self.beta_sched_funct = torch.linspace(1e-4, 0.02, T+1)
             
         # Used to embed the values of t so the model can use it
         self.t_emb = PositionalEncoding(t_dim).to(device)
@@ -92,7 +92,7 @@ class diff_model(nn.Module):
             for b in range(0, t.shape[0]):
                 a_bar_t[b] = torch.prod(1-self.beta_sched_funct[:t[b]+1])
             
-        return beta_t, a_t, a_bar_t
+        return beta_t.to(self.device), a_t.to(self.device), a_bar_t.to(self.device)
     
     
     # Unsqueezing n times along the given dim.
@@ -117,7 +117,7 @@ class diff_model(nn.Module):
         t = torch.min(t, self.T)
         
         # Sample gaussian noise
-        epsilon = torch.randn_like(X)
+        epsilon = torch.randn_like(X, device=self.device)
         
         # The value of a_bar_t at timestep t depending on the scheduler
         a_bar_t = self.unsqueeze(self.get_scheduler_info(t)[2], -1, 3)
@@ -265,7 +265,7 @@ class diff_model(nn.Module):
         mean_t = self.noise_to_mean(noise_t, x_t, t)
         
         # Get the beta t value
-        beta_t, _, _ = self.get_scheduler_info(torch.tensor(t))
+        beta_t, _, _ = self.get_scheduler_info(t)
         
         # Get the output of the predicted normal distribution
         # out = self.normal_dist(x_t, mean_t, var_t)

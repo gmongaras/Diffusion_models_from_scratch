@@ -56,7 +56,7 @@ def main():
     beta_sched = "linear"
     batchSize = 2
     device = "gpu"
-    epochs = 10
+    epochs = 0
     lr = 0.0001
     t_dim = 100
     model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched, t_dim, device)
