@@ -16,6 +16,31 @@ from .helpers.image_rescale import reduce_image, unreduce_image
 def main():
     #### Parameters
     
+    ## Model params
+    inCh = 3
+    embCh = 128
+    chMult = 2
+    num_heads = 2
+    num_res_blocks = 1
+    T = 400
+    Lambda = 0.0001
+    beta_sched = "linear"
+    batchSize = 2
+    device = "gpu"
+    epochs = 10
+    lr = 0.0001
+    t_dim = 100
+    
+    ## Saving params
+    saveDir = "models/"
+    numSaveEpochs = 100
+    
+    ## Loading params
+    loadModel = True
+    loadDir = "models/"
+    loadFile = "model_100.pkl"
+    loadDefFile = "model_params_100.json"
+    
     ## Data parameters
     
     
@@ -46,20 +71,11 @@ def main():
     
     
     ### Model Creation
-    inCh = 3
-    embCh = 128
-    chMult = 2
-    num_heads = 2
-    num_res_blocks = 1
-    T = 400
-    Lambda = 0.0001
-    beta_sched = "linear"
-    batchSize = 2
-    device = "gpu"
-    epochs = 10
-    lr = 0.0001
-    t_dim = 100
     model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched, t_dim, device)
+    
+    # Optional model loading
+    if loadModel == True:
+        model.loadModel(loadDir, loadFile, loadDefFile,)
     
     # Load in a test image
     filePath = "./tests/testimg.gif"
@@ -68,7 +84,7 @@ def main():
     im = im.repeat(batchSize, 1, 1, 1)
     
     # Train the model
-    trainer = model_trainer(model, batchSize, epochs, lr, device, Lambda)
+    trainer = model_trainer(model, batchSize, epochs, lr, device, Lambda, saveDir, numSaveEpochs)
     trainer.train(im)
     
     # What does a sample image look like?

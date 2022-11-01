@@ -16,13 +16,17 @@ class model_trainer():
     # epochs - Number of epochs to train the model for
     # lr - Learning rate of the model optimizer
     # device - Device to put the model and data on (gpu or cpu)
-    def __init__(self, diff_model, batchSize, epochs, lr, device, Lambda):
+    # saveDir - Directory to save the model to
+    # numSaveEpochs - Number of epochs until saving the models
+    def __init__(self, diff_model, batchSize, epochs, lr, device, Lambda, saveDir, numSaveEpochs):
         # Saved info
         self.T = diff_model.T
         self.model = diff_model
         self.batchSize = batchSize
         self.epochs = epochs
         self.Lambda = Lambda
+        self.saveDir = saveDir
+        self.numSaveEpochs = numSaveEpochs
         
         # Convert the device to a torch device
         if device.lower() == "gpu":
@@ -162,6 +166,10 @@ class model_trainer():
             X = reduce_image(X)
         
         for epoch in range(1, self.epochs+1):
+            # Model saving
+            if epoch%self.numSaveEpochs == 0:
+                self.model.saveModel(self.saveDir, epoch)
+            
             # Get a sample of `batchSize` number of images and put
             # it on the correct device
             batch_x_0 = X[torch.randperm(X.shape[0])[:self.batchSize]].to(self.device)

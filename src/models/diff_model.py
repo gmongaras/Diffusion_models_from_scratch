@@ -3,6 +3,8 @@ from torch import nn
 from .U_Net import U_Net
 from ..helpers.image_rescale import reduce_image, unreduce_image
 from ..blocks.PositionalEncoding import PositionalEncoding
+import os
+import json
 
 
 
@@ -25,10 +27,21 @@ class diff_model(nn.Module):
                  T, beta_sched, t_dim, device, useDeep=False):
         super(diff_model, self).__init__()
         
-        self.T = torch.tensor(T)
         self.beta_sched = beta_sched
         self.inCh = inCh
-        self.device = device
+        
+        # Important default parameters
+        self.defaults = {
+            "inCh": inCh,
+            "embCh": embCh,
+            "chMult": chMult,
+            "num_heads": num_heads,
+            "num_res_blocks": num_res_blocks,
+            "T": T,
+            "beta_sched": beta_sched,
+            "t_dim": t_dim,
+            "useDeep": useDeep
+        }
         
         # Convert the device to a torch device
         if device.lower() == "gpu":
@@ -44,6 +57,9 @@ class diff_model(nn.Module):
             device = torch.device('cpu')
         self.device = device
         self.dev = dev
+        
+        # Convert T to a tensor
+        self.T = torch.tensor(T, device=device)
         
         # U_net model
         self.unet = U_Net(inCh, inCh, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep).to(device)
@@ -277,3 +293,43 @@ class diff_model(nn.Module):
         # Return the image scaled to (0, 255)
         # return unreduce_image(out)
         return out
+    
+    
+    # Save the model
+    def saveModel(self, saveDir, epoch=None):
+        if epoch:
+            saveFile = f"model_{epoch}.pkl"
+            saveDefFile = f"model_params_{epoch}.json"
+        else:
+            saveFile = "model.pkl"
+            saveDefFile = "model_params.json"
+        
+        # Check if the directory exists. If it doesn't
+        # create it
+        if not os.path.isdir(saveDir):
+            os.makedirs(saveDir)
+        
+        # Save the model
+        torch.save(self.state_dict(), saveDir + os.sep + saveFile)
+
+        # Save the defaults
+        with open(saveDir + os.sep + saveDefFile, "w") as f:
+            json.dump(self.defaults, f)
+    
+    
+    # Load the model
+    def loadModel(self, loadDir, loadFile, loadDefFile=None):
+        if loadDefFile:
+            # Load in the defaults
+            with open(loadDir + os.sep + loadDefFile, "r") as f:
+                self.defaults = json.load(f)
+            D = self.defaults
+
+            # Reinitialize the model with the new defaults
+            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_heads"], D["num_res_blocks"], D["T"], D["beta_sched"], D["t_dim"], self.dev, bool(D["useDeep"]))
+
+            # Load the model state
+            self.load_state_dict(torch.load(loadDir + os.sep + loadFile, map_location=self.device))
+
+        else:
+            self.load_state_dict(torch.load(loadDir + os.sep + loadFile, map_location=self.device))
