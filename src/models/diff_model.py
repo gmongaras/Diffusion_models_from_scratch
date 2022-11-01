@@ -90,7 +90,7 @@ class diff_model(nn.Module):
             a_t = 1-beta_t
             a_bar_t = torch.zeros(t.shape[0])
             for b in range(0, t.shape[0]):
-                a_bar_t[b] = torch.prod(1-self.beta_sched_funct[:t[b]+1])
+                a_bar_t[b] = torch.prod(1-self.beta_sched_funct[:t[b]])
             
         return beta_t.to(self.device), a_t.to(self.device), a_bar_t.to(self.device)
     
@@ -139,7 +139,7 @@ class diff_model(nn.Module):
         t = torch.min(t, self.T)
         
         # Sample gaussian noise
-        epsilon = torch.randn(noise_shape)
+        epsilon = torch.randn(noise_shape, device=self.device)
         
         return epsilon
     
@@ -161,7 +161,7 @@ class diff_model(nn.Module):
         a_bar_t = self.unsqueeze(a_bar_t, -1, 3)
         
         # Calculate the mean and return it
-        return (1/torch.sqrt(a_t))*(x_t - (beta_t/torch.sqrt(1-a_bar_t))*epsilon)
+        return (1/torch.sqrt(a_t))*(x_t - (1-a_t/torch.sqrt(1-a_bar_t))*epsilon)
     
     
     
@@ -259,7 +259,7 @@ class diff_model(nn.Module):
         t = t.to(self.device)
         
         # Get the model predictions
-        noise_t = self.forward(x_t.to(self.device), t)
+        noise_t = self.forward(x_t, t)
         
         # Convert the noise to a mean
         mean_t = self.noise_to_mean(noise_t, x_t, t)
@@ -269,7 +269,10 @@ class diff_model(nn.Module):
         
         # Get the output of the predicted normal distribution
         # out = self.normal_dist(x_t, mean_t, var_t)
-        out = mean_t + torch.randn((mean_t.shape[0]), device=self.device)*beta_t
+        if t > 1:
+            out = mean_t + torch.randn((mean_t.shape), device=self.device)*beta_t
+        else:
+            out = mean_t + beta_t
         
         # Return the image scaled to (0, 255)
         # return unreduce_image(out)

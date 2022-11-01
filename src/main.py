@@ -56,7 +56,7 @@ def main():
     beta_sched = "linear"
     batchSize = 2
     device = "gpu"
-    epochs = 0
+    epochs = 10
     lr = 0.0001
     t_dim = 100
     model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched, t_dim, device)
@@ -73,7 +73,7 @@ def main():
     
     # What does a sample image look like?
     noise = torch.randn_like(im[:1]).to(model.device)
-    for t in range(T, -1, -1):
+    for t in range(T, 0, -1):
         with torch.no_grad():
             noise = model.unnoise_batch(noise, t)
             

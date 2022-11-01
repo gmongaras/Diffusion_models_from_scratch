@@ -186,7 +186,7 @@ class model_trainer():
             # Get the loss
             # loss = self.lossFunct(epsilon_real, epsilon_t1_pred, v_t1_pred, 
             #                       batch_x_t, batch_x_t1, t_vals)
-            loss = self.loss_simple(epsilon_real, epsilon_t1_pred)
+            loss = self.loss_simple(epsilon_t, epsilon_t1_pred)
             
             # Optimize the model
             loss.backward()
