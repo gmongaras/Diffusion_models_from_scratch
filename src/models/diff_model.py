@@ -288,7 +288,7 @@ class diff_model(nn.Module):
         if t > 1:
             out = mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(beta_t)
         else:
-            out = mean_t + torch.sqrt(beta_t)
+            out = mean_t
         
         # Return the image scaled to (0, 255)
         # return unreduce_image(out)

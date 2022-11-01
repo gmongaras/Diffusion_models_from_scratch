@@ -63,7 +63,7 @@ class model_trainer():
     # Outputs:
     #   Scalar loss value over the entire batch
     def loss_simple(self, epsilon, epsilon_pred):
-        return torch.nn.functional.mse_loss(epsilon, epsilon_pred)
+        return torch.nn.functional.mse_loss(epsilon_pred, epsilon)
     
     # Variational Lower Bound loss function
     # Inputs:
@@ -158,7 +158,7 @@ class model_trainer():
         X = X.to(cpu)
         
         # Scale the image to (-1, 1)
-        if X.max() <= 1.0:
+        if X.max() > 1.0:
             X = reduce_image(X)
         
         for epoch in range(1, self.epochs+1):
