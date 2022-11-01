@@ -56,10 +56,6 @@ class model_trainer():
         self.KL = nn.KLDivLoss(reduction="none").to(device)
         
         
-    # Norm function over batches
-    def norm_2(self, A, B):
-        return torch.sqrt((A.flatten(1, -1)**2 + B.flatten(1, -1)**2).sum(1))
-    
     # Simple loss function (L_simple)
     # Inputs:
     #   epsilon - True epsilon values of shape (N, C, L, W)
@@ -67,7 +63,7 @@ class model_trainer():
     # Outputs:
     #   Scalar loss value over the entire batch
     def loss_simple(self, epsilon, epsilon_pred):
-        return self.norm_2(epsilon, epsilon_pred).mean()
+        return torch.nn.functional.mse_loss(epsilon, epsilon_pred)
     
     # Variational Lower Bound loss function
     # Inputs:

@@ -52,13 +52,13 @@ class BigGAN_ResUp(nn.Module):
         
         # Main path with optional class addition
         X = self.BN1(X)
-        if self.useCls:
+        if self.useCls and cls != None:
             cls1 = self.clsProj1(cls).unsqueeze(-1).unsqueeze(-1)
             X += cls1
         X = self.Act1(X)
         X = self.Up(X)
         X = self.Conv1(X)
-        if self.useCls:
+        if self.useCls and cls != None:
             cls2 = self.clsProj2(cls).unsqueeze(-1).unsqueeze(-1)
             X += cls2
         X = self.Act2(X)

@@ -29,20 +29,20 @@ class U_Net(nn.Module):
         
         # What type of block should be used? deep or not deep?
         if useDeep:
-            upBlock = BigGAN_ResUp_Deep
-            downBlock = BigGAN_ResDown_Deep
-            resBlock = BigGAN_Res_Deep
+            self.upBlock = BigGAN_ResUp_Deep
+            self.downBlock = BigGAN_ResDown_Deep
+            self.resBlock = BigGAN_Res_Deep
         else:
-            upBlock = BigGAN_ResUp
-            downBlock = BigGAN_ResDown
-            resBlock = BigGAN_Res
+            self.upBlock = BigGAN_ResUp
+            self.downBlock = BigGAN_ResDown
+            self.resBlock = BigGAN_Res
         
         # Downsampling
         # (N, inCh, L, W) -> (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks))
         blocks = []
         curCh = inCh
         for i in range(1, num_res_blocks+1):
-            blocks.append(downBlock(curCh, embCh*(chMult*i)))
+            blocks.append(self.downBlock(curCh, embCh*(chMult*i)))
             blocks.append(Non_local_MH(embCh*(chMult*i), num_heads))
             curCh = embCh*(chMult*i)
         self.downSamp = nn.Sequential(
@@ -55,9 +55,9 @@ class U_Net(nn.Module):
         # -> (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks))
         intermediateCh = embCh*(chMult*num_res_blocks)
         self.intermediate = nn.Sequential(
-            resBlock(intermediateCh, intermediateCh),
+            self.resBlock(intermediateCh, intermediateCh),
             Non_local_MH(intermediateCh, num_heads),
-            resBlock(intermediateCh, intermediateCh)
+            self.resBlock(intermediateCh, intermediateCh)
         )
         
         
@@ -65,16 +65,18 @@ class U_Net(nn.Module):
         # (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks)) -> (N, inCh, L, W)
         blocks = []
         for i in range(num_res_blocks, 0, -1):
-            blocks.append(resBlock(embCh*(chMult*i), embCh*(chMult*i)))
+            blocks.append(self.resBlock(embCh*(chMult*i), embCh*(chMult*i)))
             blocks.append(Non_local_MH(embCh*(chMult*i), num_heads))
             if i == 1:
-                blocks.append(upBlock(embCh*(chMult*i), outCh, useCls=True, cls_dim=t_dim))
+                blocks.append(self.upBlock(embCh*(chMult*i), outCh, useCls=True, cls_dim=t_dim))
             else:
-                blocks.append(upBlock(embCh*(chMult*i), embCh*(chMult*(i-1)), useCls=True, cls_dim=t_dim))
-        blocks.append(resBlock(outCh, outCh))
+                blocks.append(self.upBlock(embCh*(chMult*i), embCh*(chMult*(i-1)), useCls=True, cls_dim=t_dim))
         self.upSamp = nn.Sequential(
             *blocks
         )
+        
+        # Final output block
+        self.out = self.resBlock(outCh, outCh)
     
     
     # Input:
@@ -82,8 +84,19 @@ class U_Net(nn.Module):
     #   t - (Optional) Batch of encoded t values for each 
     #       X value of shape (N, E)
     def forward(self, X, t=None):
+        # Saved residuals to add to the upsampling
+        residuals = []
+        
         # Send the input through the downsampling blocks
-        X = self.downSamp(X)
+        # while saving the output of each one
+        # for residual connections
+        for b in self.downSamp:
+            X = b(X)
+            if type(b) == Non_local_MH:
+                residuals.append(X.clone())
+            
+        # Reverse the residuals
+        residuals = residuals[::-1]
         
         # Send the output of the downsampling block
         # through the intermediate blocks
@@ -92,12 +105,18 @@ class U_Net(nn.Module):
         # Send the intermediate batch through the upsampling
         # block to get the original shape
         if t == None:
-            X = self.upSamp(X)
+            for b in self.upSamp:
+                if type(b) == self.resBlock:
+                  X += residuals[0]
+                  residuals = residuals[1:]  
+            X = b(X)
         else:
             for b in self.upSamp:
-                try: # Does the block support class encodings?
-                    X = b(X, t)
-                except TypeError:
-                    X = b(X)
+                if type(b) == self.resBlock:
+                  X += residuals[0]
+                  residuals = residuals[1:]  
+                X = b(X)
         
-        return X
+        # Send the output through the final block
+        # and return the output
+        return self.out(X)
