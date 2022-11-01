@@ -36,7 +36,7 @@ def main():
     numSaveEpochs = 100
     
     ## Loading params
-    loadModel = True
+    loadModel = False
     loadDir = "models/"
     loadFile = "model_100.pkl"
     loadDefFile = "model_params_100.json"
@@ -50,21 +50,23 @@ def main():
     ### Load in the data
     
     # Open the zip file
-    # archive = zipfile.ZipFile('data/archive.zip', 'r')
+    archive = zipfile.ZipFile('data/archive.zip', 'r')
     
-    # # Read the pickle file
-    # zip_file = archive.open("mini-imagenet-cache-train.pkl", "r")
+    # Read the pickle file
+    zip_file = archive.open("mini-imagenet-cache-train.pkl", "r")
     
-    # # Load the data
-    # data = pickle.load(zip_file)
-    # img_data = data["image_data"]
-    # class_data = data["class_dict"]
-    # del data
-    # img_data = img_data.reshape([64, 600, 84, 84, 3])
+    # Load the data
+    data = pickle.load(zip_file)
+    img_data = data["image_data"]
+    class_data = data["class_dict"]
+    del data
+    img_data = torch.tensor(img_data, dtype=torch.float32, device=torch.device("cpu"))
+    img_data = img_data.permute(0, 3, 1, 2)
+    #img_data = img_data.reshape([64, 600, 84, 84, 3])
     
-    # # Close the archive
-    # zip_file.close()
-    # archive.close()
+    # Close the archive
+    zip_file.close()
+    archive.close()
     
     
     
@@ -78,17 +80,17 @@ def main():
         model.loadModel(loadDir, loadFile, loadDefFile,)
     
     # Load in a test image
-    filePath = "./tests/testimg.gif"
-    im = np.array(Image.open(filePath).convert("RGB")).astype(float)
-    im = torch.tensor(im).permute(2, 0, 1).unsqueeze(0).to(torch.float32)
-    im = im.repeat(batchSize, 1, 1, 1)
+    # filePath = "./tests/testimg.gif"
+    # im = np.array(Image.open(filePath).convert("RGB")).astype(float)
+    # im = torch.tensor(im).permute(2, 0, 1).unsqueeze(0).to(torch.float32)
+    # im = im.repeat(batchSize, 1, 1, 1)
     
     # Train the model
     trainer = model_trainer(model, batchSize, epochs, lr, device, Lambda, saveDir, numSaveEpochs)
-    trainer.train(im)
+    trainer.train(img_data)
     
     # What does a sample image look like?
-    noise = torch.randn_like(im[:1]).to(model.device)
+    noise = torch.randn_like(img_data[:1]).to(model.device)
     for t in range(T, 0, -1):
         with torch.no_grad():
             noise = model.unnoise_batch(noise, t)
