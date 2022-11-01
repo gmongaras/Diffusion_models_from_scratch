@@ -7,10 +7,7 @@ from PIL import Image
 from .model_trainer import model_trainer
 import matplotlib.pyplot as plt
 from .helpers.image_rescale import reduce_image, unreduce_image
-
-
-
-
+import math
 
 
 def main():
@@ -18,10 +15,10 @@ def main():
     
     ## Model params
     inCh = 3
-    embCh = 128
+    embCh = 32
     chMult = 2
     num_heads = 2
-    num_res_blocks = 1
+    num_res_blocks = 3
     T = 400
     Lambda = 0.0001
     beta_sched = "linear"
@@ -63,6 +60,10 @@ def main():
     img_data = torch.tensor(img_data, dtype=torch.float32, device=torch.device("cpu"))
     img_data = img_data.permute(0, 3, 1, 2)
     #img_data = img_data.reshape([64, 600, 84, 84, 3])
+    
+    # Reshape the image to the nearest power of 2
+    next_power_of_2 = 2**math.floor(math.log2(img_data.shape[-1]))
+    img_data = img_data = torch.nn.functional.interpolate(img_data, (next_power_of_2, next_power_of_2))
     
     # Close the archive
     zip_file.close()
