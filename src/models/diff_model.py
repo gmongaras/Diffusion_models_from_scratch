@@ -286,9 +286,9 @@ class diff_model(nn.Module):
         # Get the output of the predicted normal distribution
         # out = self.normal_dist(x_t, mean_t, var_t)
         if t > 1:
-            out = mean_t + torch.randn((mean_t.shape), device=self.device)*beta_t
+            out = mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(beta_t)
         else:
-            out = mean_t + beta_t
+            out = mean_t + torch.sqrt(beta_t)
         
         # Return the image scaled to (0, 255)
         # return unreduce_image(out)

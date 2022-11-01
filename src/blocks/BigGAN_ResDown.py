@@ -19,9 +19,9 @@ class BigGAN_ResDown(nn.Module):
         
         # Main downsample flow (N, inCh, L, W) -> (N, outCh, L/2, W/2)
         self.Down = nn.Sequential(
-            nn.ReLU(),                              # (N, inCh, L, W)
+            nn.GELU(),                              # (N, inCh, L, W)
             nn.Conv2d(inCh, outCh, 3, padding=1),   # (N, outCh, L, W)
-            nn.ReLU(),                              # (N, outCh, L, W)
+            nn.GELU(),                              # (N, outCh, L, W)
             nn.Conv2d(outCh, outCh, 3, padding=1),  # (N, outCh, L, W)
             nn.AvgPool2d(kernel_size=2)             # (N, outCh, L/2, W/2)
         )

@@ -109,7 +109,7 @@ class U_Net(nn.Module):
                 if type(b) == self.resBlock:
                   X += residuals[0]
                   residuals = residuals[1:]  
-            X = b(X)
+                X = b(X)
         else:
             for b in self.upSamp:
                 if type(b) == self.resBlock:

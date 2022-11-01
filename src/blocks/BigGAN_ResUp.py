@@ -26,11 +26,11 @@ class BigGAN_ResUp(nn.Module):
         
         # Main Upsample flow (N, inCh, L, W) -> (N, outCh, 2L, 2W)
         self.BN1 = nn.BatchNorm2d(inCh)                         # (N, inCh, L, W)
-        self.Act1 = nn.ReLU()                                   # (N, inCh, L, W)
+        self.Act1 = nn.GELU()                                   # (N, inCh, L, W)
         self.Up = nn.Upsample(scale_factor=2)                   # (N, inCh, 2L, 2W)
         self.Conv1 = nn.Conv2d(inCh, outCh, 3, padding=1)       # (N, outCh, 2L, 2W)
         self.BN2 = nn.BatchNorm2d(outCh)                        # (N, outCh, 2L, 2W)
-        self.Act2 = nn.ReLU()                                   # (N, outCh, 2L, 2W)
+        self.Act2 = nn.GELU()                                   # (N, outCh, 2L, 2W)
         self.Conv2 = nn.Conv2d(outCh, outCh, 3, padding=1)      # (N, outCh, 2L, 2W)
         
         # Optional class vector applied over the channels
