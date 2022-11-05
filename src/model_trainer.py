@@ -47,7 +47,7 @@ class model_trainer():
         self.model.to(self.device)
             
         # Uniform distribution for values of t
-        self.T_dist = torch.distributions.uniform.Uniform(float(1.0), float(self.T))
+        self.T_dist = torch.distributions.uniform.Uniform(float(0.0), float(self.T-1))
         
         # Optimizer
         self.optim = torch.optim.Adam(self.model.parameters(), lr=lr)

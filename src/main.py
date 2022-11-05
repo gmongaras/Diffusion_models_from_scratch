@@ -92,7 +92,7 @@ def main():
     
     # What does a sample image look like?
     noise = torch.randn_like(img_data[:1]).to(model.device)
-    for t in range(T, 0, -1):
+    for t in range(T-1, -1, -1):
         with torch.no_grad():
             noise = model.unnoise_batch(noise, t)
             

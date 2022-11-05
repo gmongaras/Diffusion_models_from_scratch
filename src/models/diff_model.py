@@ -73,7 +73,7 @@ class diff_model(nn.Module):
                     torch.cos(torch.tensor((s/(1+s)) * torch.pi/2))**2
             self.beta_sched_funct = f
         else: # Linear
-            self.beta_sched_funct = torch.linspace(1e-4, 0.02, T+1)
+            self.beta_sched_funct = torch.linspace(1e-4, 0.02, T)
             
         # Used to embed the values of t so the model can use it
         self.t_emb = PositionalEncoding(t_dim).to(device)
@@ -82,31 +82,37 @@ class diff_model(nn.Module):
             
     # Used to get the value of beta, a and a_bar from the schedulers
     # Inputs:
-    #   t - Batch of t values of shape (N)
+    #   t - Batch of t values of shape (N) 
+    #       Note: t values can be in the range [0, T-1]
     # Outputs:
     #   Batch of beta and a values:
     #     beta_t
     #     a_t
     #     a_bar_t
     def get_scheduler_info(self, t):
+        # t value assertion
+        assert t <= self.T-1 and t >= 0, "The value of t can be in the range [0, T-1]"
+        
         # Values depend on the scheduler
         if self.beta_sched == "cosine":
             # Beta_t, a_t, and a_bar_t
             # using the cosine scheduler
             a_bar_t = self.beta_sched_funct(t)
-            a_bar_t1 = self.beta_sched_funct(t-1)
+            if t > 0:
+                a_bar_t1 = self.beta_sched_funct(t-1)
+            else:
+                a_bar_t1 = a_bar_t
             beta_t = 1-(a_bar_t/(a_bar_t1))
-            beta_t = torch.clamp(beta_t, None, 0.999)
+            beta_t = torch.clamp(beta_t, 0, 0.999)
             a_t = 1-beta_t
         else:
             # Beta_t, a_t, and a_bar_t
             # using the linear scheduler
             beta_t = self.beta_sched_funct.repeat(t.shape[0])[t]
-            beta_t = torch.clamp(beta_t, None, 0.999)
             a_t = 1-beta_t
             a_bar_t = torch.zeros(t.shape[0])
             for b in range(0, t.shape[0]):
-                a_bar_t[b] = torch.prod(1-self.beta_sched_funct[:t[b]])
+                a_bar_t[b] = torch.prod(1-self.beta_sched_funct[:t[b]+1])
             
         return beta_t.to(self.device), a_t.to(self.device), a_bar_t.to(self.device)
     
