@@ -175,13 +175,13 @@ class model_trainer():
             t_vals = torch.round(t_vals).to(torch.long)
             
             # Noise the batch to time t-1
-            batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)
+            #batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)
             
             # Noise the batch to time t
             batch_x_t, epsilon_t = self.model.noise_batch(batch_x_0, t_vals)
 
             # Get the epsilon value between t and t-1
-            epsilon_real = epsilon_t-epsilon_t1
+            #epsilon_real = epsilon_t-epsilon_t1
             
             # Send the noised data through the model to get the
             # predicted noise for batch at t-1

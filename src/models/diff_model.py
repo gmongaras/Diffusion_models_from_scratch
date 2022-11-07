@@ -5,6 +5,7 @@ from ..helpers.image_rescale import reduce_image, unreduce_image
 from ..blocks.PositionalEncoding import PositionalEncoding
 import os
 import json
+import threading
 
 
 
@@ -91,17 +92,14 @@ class diff_model(nn.Module):
     #     a_bar_t
     def get_scheduler_info(self, t):
         # t value assertion
-        assert t <= self.T-1 and t >= 0, "The value of t can be in the range [0, T-1]"
+        assert torch.all(t <= self.T-1) and torch.all(t >= 0), "The value of t can be in the range [0, T-1]"
         
         # Values depend on the scheduler
         if self.beta_sched == "cosine":
             # Beta_t, a_t, and a_bar_t
             # using the cosine scheduler
             a_bar_t = self.beta_sched_funct(t)
-            if t > 0:
-                a_bar_t1 = self.beta_sched_funct(t-1)
-            else:
-                a_bar_t1 = a_bar_t
+            a_bar_t1 = torch.where(t > 0, self.beta_sched_funct(t-1), a_bar_t)
             beta_t = 1-(a_bar_t/(a_bar_t1))
             beta_t = torch.clamp(beta_t, 0, 0.999)
             a_t = 1-beta_t
@@ -181,9 +179,16 @@ class diff_model(nn.Module):
         beta_t = self.unsqueeze(beta_t, -1, 3)
         a_t = self.unsqueeze(a_t, -1, 3)
         a_bar_t = self.unsqueeze(a_bar_t, -1, 3)
+
+        # Get the previous beta and a values for the batch of t-1 values
+        t = torch.where(t == 0, 1, t)
+        beta_t1, a_t1, a_bar_t1 = self.get_scheduler_info(t-1)
         
         # Calculate the mean and return it
-        return (1/torch.sqrt(a_t))*(x_t - (1-a_t/torch.sqrt(1-a_bar_t))*epsilon)
+        #return (1/torch.sqrt(a_t))*(x_t - ((1-a_t)/torch.sqrt(1-a_bar_t))*epsilon)
+        return (torch.sqrt(a_bar_t1)*beta_t)/(1-a_bar_t) * \
+            torch.clamp( (1/torch.sqrt(a_bar_t))*x_t - torch.sqrt((1-a_bar_t)/a_bar_t)*epsilon, -1, 1 ) + \
+            (((1-a_bar_t1)*torch.sqrt(a_t))/(1-a_bar_t))*x_t
     
     
     
@@ -291,7 +296,7 @@ class diff_model(nn.Module):
         
         # Get the output of the predicted normal distribution
         # out = self.normal_dist(x_t, mean_t, var_t)
-        if t > 1:
+        if t > 0:
             out = mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(beta_t)
         else:
             out = mean_t
@@ -300,9 +305,7 @@ class diff_model(nn.Module):
         # return unreduce_image(out)
         return out
     
-    
-    # Save the model
-    def saveModel(self, saveDir, epoch=None):
+    def saveModel_T(self, saveDir, epoch=None):
         if epoch:
             saveFile = f"model_{epoch}.pkl"
             saveDefFile = f"model_params_{epoch}.json"
@@ -321,6 +324,12 @@ class diff_model(nn.Module):
         # Save the defaults
         with open(saveDir + os.sep + saveDefFile, "w") as f:
             json.dump(self.defaults, f)
+    
+    # Save the model
+    def saveModel(self, saveDir, epoch=None):
+        # Async saving
+        thr = threading.Thread(target=self.saveModel_T, args=(saveDir, epoch), kwargs={})
+        thr.start()
     
     
     # Load the model

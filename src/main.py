@@ -15,18 +15,18 @@ def main():
     
     ## Model params
     inCh = 3
-    embCh = 32
+    embCh = 16
     chMult = 2
-    num_heads = 2
+    num_heads = 8
     num_res_blocks = 3
-    T = 400
+    T = 1000
     Lambda = 0.0001
     beta_sched = "linear"
-    batchSize = 2
+    batchSize = 128
     device = "gpu"
-    epochs = 10
-    lr = 0.0001
-    t_dim = 100
+    epochs = 10000
+    lr = 0.0005
+    t_dim = 128
     
     ## Saving params
     saveDir = "models/"
@@ -35,7 +35,7 @@ def main():
     ## Loading params
     loadModel = False
     loadDir = "models/"
-    loadFile = "model_100.pkl"
+    loadFile = "model_10000.pkl"
     loadDefFile = "model_params_100.json"
     
     ## Data parameters
@@ -60,10 +60,22 @@ def main():
     img_data = torch.tensor(img_data, dtype=torch.float32, device=torch.device("cpu"))
     img_data = img_data.permute(0, 3, 1, 2)
     #img_data = img_data.reshape([64, 600, 84, 84, 3])
+
+
+
+
+    from datasets import load_dataset
+    dataset = load_dataset("fashion_mnist")["train"]["image"]
+    img_data = [np.array(i) for i in dataset]
+    img_data = torch.tensor(np.array(img_data)).unsqueeze(-1).permute(0, -1, 1, 2).to(torch.float)
+    inCh = 1
     
+
+
+
     # Reshape the image to the nearest power of 2
-    next_power_of_2 = 2**math.floor(math.log2(img_data.shape[-1]))
-    img_data = img_data = torch.nn.functional.interpolate(img_data, (next_power_of_2, next_power_of_2))
+    next_power_of_2 = 2**math.ceil(math.log2(img_data.shape[-1]))
+    img_data = torch.nn.functional.interpolate(img_data, (next_power_of_2, next_power_of_2))
     
     # Close the archive
     zip_file.close()
@@ -80,12 +92,6 @@ def main():
     if loadModel == True:
         model.loadModel(loadDir, loadFile, loadDefFile,)
     
-    # Load in a test image
-    # filePath = "./tests/testimg.gif"
-    # im = np.array(Image.open(filePath).convert("RGB")).astype(float)
-    # im = torch.tensor(im).permute(2, 0, 1).unsqueeze(0).to(torch.float32)
-    # im = im.repeat(batchSize, 1, 1, 1)
-    
     # Train the model
     trainer = model_trainer(model, batchSize, epochs, lr, device, Lambda, saveDir, numSaveEpochs)
     trainer.train(img_data)
@@ -94,12 +100,13 @@ def main():
     noise = torch.randn_like(img_data[:1]).to(model.device)
     for t in range(T-1, -1, -1):
         with torch.no_grad():
+            print(noise.mean(), noise.max(), noise.min())
             noise = model.unnoise_batch(noise, t)
             
     # Convert the sample image to 0->255
     # and show it
     noise = unreduce_image(noise).cpu().detach()
-    plt.imshow(noise[0].permute(1, 2, 0))
+    plt.imshow(noise[0].permute(1, 2, 0), cmap='Greys')
     plt.savefig("fig.png")
     
     

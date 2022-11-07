@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 from ..blocks.BigGAN_ResDown import BigGAN_ResDown
 from ..blocks.BigGAN_ResUp import BigGAN_ResUp
@@ -6,6 +7,8 @@ from ..blocks.BigGAN_ResDown_Deep import BigGAN_ResDown_Deep
 from ..blocks.BigGAN_ResUp_Deep import BigGAN_ResUp_Deep
 from ..blocks.BigGAN_Res_Deep import BigGAN_Res_Deep
 from ..blocks.Non_local_MH import Non_local_MH
+from ..blocks.resBlock import resBlock
+from ..blocks.convNext import convNext
 
 
 
@@ -36,16 +39,23 @@ class U_Net(nn.Module):
             self.upBlock = BigGAN_ResUp
             self.downBlock = BigGAN_ResDown
             self.resBlock = BigGAN_Res
+
+        # Input convolution
+        self.inConv = convNext(inCh, embCh)
         
         # Downsampling
         # (N, inCh, L, W) -> (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks))
         blocks = []
-        curCh = inCh
+        curCh = embCh
+        # for i in range(1, num_res_blocks+1):
+        #     blocks.append(self.resBlock(curCh, curCh, useCls=True, cls_dim=t_dim))
+        #     blocks.append(self.downBlock(curCh, embCh*(chMult*i)))
+        #     blocks.append(Non_local_MH(embCh*(chMult*i), head_res=16))
+        #     curCh = embCh*(chMult*i)
         for i in range(1, num_res_blocks+1):
-            blocks.append(self.downBlock(curCh, embCh*(chMult*i)))
-            blocks.append(Non_local_MH(embCh*(chMult*i), num_heads))
+            blocks.append(resBlock(curCh, embCh*(chMult*i), t_dim, head_res=16))
             curCh = embCh*(chMult*i)
-        self.downSamp = nn.Sequential(
+        self.downBlocks = nn.Sequential(
             *blocks
         )
         
@@ -54,29 +64,50 @@ class U_Net(nn.Module):
         # (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks))
         # -> (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks))
         intermediateCh = embCh*(chMult*num_res_blocks)
+        # self.intermediate = nn.Sequential(
+        #     self.resBlock(intermediateCh, intermediateCh, useCls=True, cls_dim=t_dim),
+        #     Non_local_MH(intermediateCh, head_res=16),
+        #     self.resBlock(intermediateCh, intermediateCh, useCls=True, cls_dim=t_dim)
+        # )
         self.intermediate = nn.Sequential(
-            self.resBlock(intermediateCh, intermediateCh),
-            Non_local_MH(intermediateCh, num_heads),
-            self.resBlock(intermediateCh, intermediateCh)
+            convNext(intermediateCh, intermediateCh, True, t_dim),
+            Non_local_MH(intermediateCh, head_res=16),
+            # Attention(intermediateCh),
+            convNext(intermediateCh, intermediateCh, True, t_dim),
         )
         
         
         # Upsample
         # (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks)) -> (N, inCh, L, W)
         blocks = []
+        # for i in range(num_res_blocks, 0, -1):
+        #     blocks.append(self.resBlock(embCh*(chMult*i), embCh*(chMult*i), useCls=True, cls_dim=t_dim))
+        #     # blocks.append(Non_local_MH(embCh*(chMult*i), head_res=16))
+        #     if i == 1:
+        #         blocks.append(self.upBlock(embCh*(chMult*i), outCh, useCls=True, cls_dim=t_dim))
+        #     else:
+        #         blocks.append(self.upBlock(embCh*(chMult*i), embCh*(chMult*(i-1)), useCls=True, cls_dim=t_dim))
         for i in range(num_res_blocks, 0, -1):
-            blocks.append(self.resBlock(embCh*(chMult*i), embCh*(chMult*i)))
-            blocks.append(Non_local_MH(embCh*(chMult*i), num_heads))
             if i == 1:
-                blocks.append(self.upBlock(embCh*(chMult*i), outCh, useCls=True, cls_dim=t_dim))
+                blocks.append(resBlock(2*embCh*(chMult*i), outCh, t_dim, num_heads=1))
             else:
-                blocks.append(self.upBlock(embCh*(chMult*i), embCh*(chMult*(i-1)), useCls=True, cls_dim=t_dim))
-        self.upSamp = nn.Sequential(
+                blocks.append(resBlock(2*embCh*(chMult*i), embCh*(chMult*(i-1)), t_dim, head_res=16))
+        self.upBlocks = nn.Sequential(
             *blocks
         )
         
         # Final output block
-        self.out = self.resBlock(outCh, outCh)
+        self.out = convNext(outCh, outCh)
+
+        # Down/up sample blocks
+        self.downSamp = nn.AvgPool2d(2) 
+        self.upSamp = nn.Upsample(scale_factor=2)
+
+        self.time_mlp = nn.Sequential(
+                nn.Linear(t_dim, t_dim),
+                nn.GELU(),
+                nn.Linear(t_dim, t_dim),
+            )
     
     
     # Input:
@@ -84,38 +115,69 @@ class U_Net(nn.Module):
     #   t - (Optional) Batch of encoded t values for each 
     #       X value of shape (N, E)
     def forward(self, X, t=None):
+        t = self.time_mlp(t)
+
         # Saved residuals to add to the upsampling
         residuals = []
+
+        X = self.inConv(X)
         
         # Send the input through the downsampling blocks
         # while saving the output of each one
         # for residual connections
-        for b in self.downSamp:
-            X = b(X)
-            if type(b) == Non_local_MH:
-                residuals.append(X.clone())
+        # for b in self.downSamp:
+        #     try:
+        #         X = b(X, t)
+        #     except TypeError:
+        #         X = b(X)
+        #     if type(b) == self.downBlock:
+        #         residuals.append(X.clone())
+        for b in self.downBlocks:
+            X = b(X, t)
+            residuals.append(X.clone())
+            if b != self.downBlocks[-1]:
+                X = self.downSamp(X)
             
         # Reverse the residuals
         residuals = residuals[::-1]
         
         # Send the output of the downsampling block
         # through the intermediate blocks
-        X = self.intermediate(X)
+        for b in self.intermediate:
+            try:
+                X = b(X, t)
+            except TypeError:
+                X = b(X)
+        # X = self.intermediate(X)
         
         # Send the intermediate batch through the upsampling
         # block to get the original shape
-        if t == None:
-            for b in self.upSamp:
-                if type(b) == self.resBlock:
-                  X += residuals[0]
-                  residuals = residuals[1:]  
-                X = b(X)
-        else:
-            for b in self.upSamp:
-                if type(b) == self.resBlock:
-                  X += residuals[0]
-                  residuals = residuals[1:]  
-                X = b(X)
+        # if t == None:
+        #     for b in self.upSamp:
+        #         if len(residuals) > 0 and type(b) == self.resBlock:
+        #             try:
+        #                 X += residuals[0]
+        #                 residuals = residuals[1:]
+        #             except RuntimeError:
+        #                 pass
+        #         X = b(X)
+        # else:
+        #     for b in self.upSamp:
+        #         if len(residuals) > 0 and type(b) == self.resBlock:
+        #             try:
+        #                 X += residuals[0]
+        #                 residuals = residuals[1:]
+        #             except RuntimeError:
+        #                 pass
+        #         try:  
+        #             X = b(X, t)
+        #         except TypeError:
+        #             X = b(X)
+        for b in self.upBlocks:
+            X = b(torch.cat((X, residuals[0]), dim=1), t)
+            residuals = residuals[1:]
+            if b != self.upBlocks[-1]:
+                X = self.upSamp(X)
         
         # Send the output through the final block
         # and return the output

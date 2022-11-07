@@ -10,7 +10,6 @@ class BigGAN_ResUp(nn.Module):
     #   inCh - Number of channels the input batch has
     #   outCh - Number of chanels the ouput batch should have
     #   useCls - Should class conditioning be used?
-    #   num_cls - Number of classes to condition on
     #   cls_dim - Number of dimensions in the class token input
     def __init__(self, inCh, outCh, useCls=False, cls_dim=None):
         super(BigGAN_ResUp, self).__init__()
@@ -25,11 +24,11 @@ class BigGAN_ResUp(nn.Module):
         )
         
         # Main Upsample flow (N, inCh, L, W) -> (N, outCh, 2L, 2W)
-        self.BN1 = nn.BatchNorm2d(inCh)                         # (N, inCh, L, W)
+        self.BN1 = nn.GroupNorm(4, inCh)                         # (N, inCh, L, W)
         self.Act1 = nn.GELU()                                   # (N, inCh, L, W)
         self.Up = nn.Upsample(scale_factor=2)                   # (N, inCh, 2L, 2W)
         self.Conv1 = nn.Conv2d(inCh, outCh, 3, padding=1)       # (N, outCh, 2L, 2W)
-        self.BN2 = nn.BatchNorm2d(outCh)                        # (N, outCh, 2L, 2W)
+        self.BN2 = nn.GroupNorm(4, outCh)                        # (N, outCh, 2L, 2W)
         self.Act2 = nn.GELU()                                   # (N, outCh, 2L, 2W)
         self.Conv2 = nn.Conv2d(outCh, outCh, 3, padding=1)      # (N, outCh, 2L, 2W)
         

@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 
 
@@ -25,6 +26,9 @@ class Non_local_MH(nn.Module):
         # Get the number of heads using the head resolution
         if head_res != None:
             self.num_heads = inCh//head_res
+
+        # Residual block
+        self.resBlock = nn.Conv2d(inCh, inCh, 1)
         
         # Query, Key, Value convolutions
         self.Q_conv = nn.Conv2d(inCh, inCh, 1)
@@ -34,8 +38,8 @@ class Non_local_MH(nn.Module):
         # Output convolution
         self.O_conv = nn.Conv2d(inCh, inCh, 1)
         
-        # Batch normalization
-        self.batchNorm = nn.BatchNorm2d(inCh)
+        # Layer normalization
+        self.LN = nn.GroupNorm(inCh, inCh)
         
     # Given a tensor, the tensor is extended to multiple heads
     # Inputs:
@@ -61,6 +65,9 @@ class Non_local_MH(nn.Module):
     # Outputs:
     #   Tensor of shape (N, inCh, L, W)
     def forward(self, X):
+        # Residual connection
+        res = self.resBlock(X)
+
         # Get the key, query, and values
         # X: (N, inCh, L, W) -> (N, inCh, L, W)
         K, Q, V = self.Q_conv(X), self.K_conv(X), self.V_conv(X)
@@ -78,19 +85,12 @@ class Non_local_MH(nn.Module):
         V = V.flatten(start_dim=3)
         
         # Multiply the query and key along the channels 
-        # (N, H, inCh/H, LW) * (N, H, inCh/H, LW) -> (N, H, inCh/H, inCh/H)
-        """
-        Note, the original Non-local paper multiplies the matrices
-        to produce a tensor of shape (N, H, TLW, TLW), but this
-        produces massive gradients. Also, the original attention
-        paper essentially multiplied so the output was (N, H, S, S)
-        which is essentially the same as what I'm doing, (N, H, C, C)
-        """
-        Out = Q@K.permute(0, 1, 3, 2)
+        # (N, H, inCh/H, LW) * (N, H, inCh/H, LW) -> (N, H, Lw, LW)
+        Out = torch.einsum("nhcd, nhcD -> nhdD", Q, K)
         
         # Multiply the output matrix by the values matrix
-        # (N, H, inCh/H, inCh/H) * (N, H, inCh/H, TLW) -> (N, H, inCh/H, TLW)
-        Out = Out@V
+        # (N, H, LW, LW) * (N, H, inCh/H, LW) -> (N, H, inCh/H, LW)
+        Out = torch.einsum("nhdD, nhcD -> nhcd", Out, V)
         
         # Unflatten the resulting tensor
         # (N, H, inCh/H, LW) -> (N, H, inCh/H, L, W)
@@ -104,5 +104,5 @@ class Non_local_MH(nn.Module):
         # final convolution to get the initial channels
         Out = self.O_conv(Out)
         
-        # Return the otuput with the input as a residual
-        return self.batchNorm(Out + X)
+        # Return the output with the input as a residual
+        return self.LN(Out + res)
