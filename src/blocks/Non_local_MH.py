@@ -14,7 +14,8 @@ class Non_local_MH(nn.Module):
     #   head_res - Optional parameter. Specify the resolution each
     #              head operates at rather than the number of heads. If
     #              this is not None, num_heads is ignored
-    def __init__(self, inCh, num_heads=2, head_res=None):
+    #   spatial - Should spatial or channel attion be used
+    def __init__(self, inCh, num_heads=2, head_res=None, spatial=False):
         super(Non_local_MH, self).__init__()
         self.num_heads = num_heads
         
@@ -40,6 +41,9 @@ class Non_local_MH(nn.Module):
         
         # Layer normalization
         self.LN = nn.GroupNorm(inCh, inCh)
+
+        # Is this spatial or channel attention
+        self.spatial = spatial
         
     # Given a tensor, the tensor is extended to multiple heads
     # Inputs:
@@ -84,13 +88,25 @@ class Non_local_MH(nn.Module):
         Q = Q.flatten(start_dim=3)
         V = V.flatten(start_dim=3)
         
-        # Multiply the query and key along the channels 
-        # (N, H, inCh/H, LW) * (N, H, inCh/H, LW) -> (N, H, Lw, LW)
-        Out = torch.einsum("nhcd, nhcD -> nhdD", Q, K)
-        
-        # Multiply the output matrix by the values matrix
-        # (N, H, LW, LW) * (N, H, inCh/H, LW) -> (N, H, inCh/H, LW)
-        Out = torch.einsum("nhdD, nhcD -> nhcd", Out, V)
+        # Channel attention finds relationships among channels
+        if self.spatial == False:
+            # Multiply the query and key along the channels 
+            # (N, H, inCh/H, LW) * (N, H, inCh/H, LW) -> (N, H, LW, LW)
+            Out = torch.einsum("nhcd, nhcD -> nhdD", Q, K)
+            
+            # Multiply the output matrix by the values matrix
+            # (N, H, LW, LW) * (N, H, inCh/H, LW) -> (N, H, inCh/H, LW)
+            Out = torch.einsum("nhdD, nhcD -> nhcd", Out, V)
+
+        # Spatial attention finds relationships among the length and width
+        else:
+            # Multiply the query and key along the spatial dimension
+            # (N, H, inCh/H, LW) * (N, H, inCh/H, LW) -> (N, H, inCh/H, inCh/H)
+            Out = Q@K.permute(0, 1, 3, 2)
+            
+            # Multiply the output matrix by the values matrix
+            # (N, H, LW, LW) * (N, H, inCh/H, LW) -> (N, H, inCh/H, LW)
+            Out = Out@V
         
         # Unflatten the resulting tensor
         # (N, H, inCh/H, LW) -> (N, H, inCh/H, L, W)

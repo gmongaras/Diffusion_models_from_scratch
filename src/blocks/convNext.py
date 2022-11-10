@@ -36,7 +36,7 @@ class convNext(nn.Sequential):
             nn.Conv2d(inCh, outCh, 1),
             nn.GELU(),
             nn.GroupNorm(outCh, outCh),
-            nn.Conv2d(outCh, outCh, 1)
+            nn.Conv2d(outCh, outCh, 1),
         )
 
         # Residual path

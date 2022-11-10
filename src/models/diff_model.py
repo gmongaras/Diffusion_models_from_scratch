@@ -92,7 +92,7 @@ class diff_model(nn.Module):
     #     a_bar_t
     def get_scheduler_info(self, t):
         # t value assertion
-        assert torch.all(t <= self.T-1) and torch.all(t >= 0), "The value of t can be in the range [0, T-1]"
+        assert torch.all(t <= self.T-1) and torch.all(t >= -1), "The value of t can be in the range [-1, T-1]"
         
         # Values depend on the scheduler
         if self.beta_sched == "cosine":
@@ -176,15 +176,30 @@ class diff_model(nn.Module):
     def noise_to_mean(self, epsilon, x_t, t):
         # Get the beta and a values for the batch of t values
         beta_t, a_t, a_bar_t = self.get_scheduler_info(t)
+
+        # Get the previous a bar values for the batch of t-1 values
+        a_bar_t1 = torch.where(t == 0, 0, self.get_scheduler_info(t-1)[2])
+
+        # Make sure everything is in the correct shape
         beta_t = self.unsqueeze(beta_t, -1, 3)
         a_t = self.unsqueeze(a_t, -1, 3)
         a_bar_t = self.unsqueeze(a_bar_t, -1, 3)
+        a_bar_t1 = self.unsqueeze(a_bar_t1, -1, 3)
+        if len(t.shape) == 1:
+            t = self.unsqueeze(t, -1, 3)
 
-        # Get the previous beta and a values for the batch of t-1 values
-        t = torch.where(t == 0, 1, t)
-        beta_t1, a_t1, a_bar_t1 = self.get_scheduler_info(t-1)
-        
+
         # Calculate the mean and return it
+        mean = torch.where(t == 0,
+            # When t is 0, normal without correction
+            (1/torch.sqrt(a_t))*(x_t - ((1-a_t)/torch.sqrt(1-a_bar_t))*epsilon),
+
+            # When t is 0, special with correction
+            (torch.sqrt(a_bar_t1)*beta_t)/(1-a_bar_t) * \
+                torch.clamp( (1/torch.sqrt(a_bar_t))*x_t - torch.sqrt((1-a_bar_t)/a_bar_t)*epsilon, -1, 1 ) + \
+                (((1-a_bar_t1)*torch.sqrt(a_t))/(1-a_bar_t))*x_t
+        )
+        return mean
         #return (1/torch.sqrt(a_t))*(x_t - ((1-a_t)/torch.sqrt(1-a_bar_t))*epsilon)
         return (torch.sqrt(a_bar_t1)*beta_t)/(1-a_bar_t) * \
             torch.clamp( (1/torch.sqrt(a_bar_t))*x_t - torch.sqrt((1-a_bar_t)/a_bar_t)*epsilon, -1, 1 ) + \
@@ -293,13 +308,12 @@ class diff_model(nn.Module):
         
         # Get the beta t value
         beta_t, _, _ = self.get_scheduler_info(t)
+        beta_t = self.unsqueeze(beta_t, -1, 3)
+        t = self.unsqueeze(t, -1, 3)
         
         # Get the output of the predicted normal distribution
         # out = self.normal_dist(x_t, mean_t, var_t)
-        if t > 0:
-            out = mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(beta_t)
-        else:
-            out = mean_t
+        out = torch.where(t > 0, mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(beta_t), mean_t)
         
         # Return the image scaled to (0, 255)
         # return unreduce_image(out)

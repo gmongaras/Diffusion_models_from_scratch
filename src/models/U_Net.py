@@ -41,7 +41,7 @@ class U_Net(nn.Module):
             self.resBlock = BigGAN_Res
 
         # Input convolution
-        self.inConv = convNext(inCh, embCh)
+        self.inConv = nn.Conv2d(inCh, embCh, 7, padding=3)
         
         # Downsampling
         # (N, inCh, L, W) -> (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks))
@@ -72,7 +72,6 @@ class U_Net(nn.Module):
         self.intermediate = nn.Sequential(
             convNext(intermediateCh, intermediateCh, True, t_dim),
             Non_local_MH(intermediateCh, head_res=16),
-            # Attention(intermediateCh),
             convNext(intermediateCh, intermediateCh, True, t_dim),
         )
         
@@ -97,13 +96,13 @@ class U_Net(nn.Module):
         )
         
         # Final output block
-        self.out = convNext(outCh, outCh)
+        self.out = nn.Conv2d(outCh, outCh, 7, padding=3)
 
         # Down/up sample blocks
         self.downSamp = nn.AvgPool2d(2) 
         self.upSamp = nn.Upsample(scale_factor=2)
 
-        self.time_mlp = nn.Sequential(
+        self.t_emb = nn.Sequential(
                 nn.Linear(t_dim, t_dim),
                 nn.GELU(),
                 nn.Linear(t_dim, t_dim),
@@ -115,7 +114,7 @@ class U_Net(nn.Module):
     #   t - (Optional) Batch of encoded t values for each 
     #       X value of shape (N, E)
     def forward(self, X, t=None):
-        t = self.time_mlp(t)
+        t = self.t_emb(t)
 
         # Saved residuals to add to the upsampling
         residuals = []
