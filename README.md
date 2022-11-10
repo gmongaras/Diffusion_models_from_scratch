@@ -1,6 +1,26 @@
 # Diffusion_models_from_scratch
 Creating a diffusion model from scratch in PyTorch to learn exactly how they work.
 
+# Current Additions
+This section will go over the current additions to the model. It starts with the basics of a diffusion model and goes into what I've added to improve it. Most of it will be according to [Diffusion Models Beat GANs on Image Synthesis](https://arxiv.org/abs/2105.05233).
+
+## Basic Diffusion Model
+
+A diffusion model is defined by
+...
+[Enter diffusion explanation here]
+
+## Varaince Prediction
+
+[I will attempt to add this soon]
+https://arxiv.org/abs/2102.09672
+
+## Faster interence
+
+[I will also attempt to do this soon]
+https://arxiv.org/abs/2010.02502
+
+
 
 
 # Data
