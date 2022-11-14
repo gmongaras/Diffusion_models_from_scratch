@@ -1,5 +1,7 @@
-data/
-models/
+data/*
+models/*
+*.gif
+*.png
 
 
 # Byte-compiled / optimized / DLL files

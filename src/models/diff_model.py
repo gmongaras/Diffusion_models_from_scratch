@@ -174,6 +174,10 @@ class diff_model(nn.Module):
     #   A tensor of shape (N, C, L, W) representing the mean of the
     #     unnoised image x_t-1
     def noise_to_mean(self, epsilon, x_t, t):
+        # Note: Function from the following:
+        # https://github.com/hojonathanho/diffusion/issues/5
+
+        
         # Get the beta and a values for the batch of t values
         beta_t, a_t, a_bar_t = self.get_scheduler_info(t)
 

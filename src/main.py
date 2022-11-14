@@ -20,10 +20,10 @@ def main():
     embCh = 32
     chMult = 2
     num_heads = 8
-    num_res_blocks = 4
+    num_res_blocks = 5
     T = 1000
     Lambda = 0.0001
-    beta_sched = "linear"
+    beta_sched = "cosine"
     batchSize = 128
     device = "gpu"
     epochs = 50000
@@ -37,7 +37,7 @@ def main():
     ## Loading params
     loadModel = False
     loadDir = "models/"
-    loadFile = "model_15000.pkl"
+    loadFile = "model_50000.pkl"
     loadDefFile = "model_params_1000.json"
     
     ## Data parameters
@@ -118,7 +118,7 @@ def main():
     # What does a sample image look like?
     noise = torch.randn((1, *img_data.shape[1:])).to(model.device)
     imgs = []
-    for t in tqdm(range(T-1, -1, -1)):
+    for t in tqdm(range(T-1, 0, -1)):
         with torch.no_grad():
             noise = model.unnoise_batch(noise, t)
             imgs.append(torch.clamp(unreduce_image(noise[0]).cpu().detach().int(), 0, 255).permute(1, 2, 0))
