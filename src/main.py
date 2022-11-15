@@ -20,13 +20,13 @@ def main():
     embCh = 32
     chMult = 2
     num_heads = 8
-    num_res_blocks = 5
+    num_res_blocks = 4
     T = 1000
-    Lambda = 0.0001
+    Lambda = 0.001
     beta_sched = "cosine"
     batchSize = 128
     device = "gpu"
-    epochs = 50000
+    epochs = 10000
     lr = 0.0001
     t_dim = 256
     
@@ -37,7 +37,7 @@ def main():
     ## Loading params
     loadModel = False
     loadDir = "models/"
-    loadFile = "model_50000.pkl"
+    loadFile = "model_1000.pkl"
     loadDefFile = "model_params_1000.json"
     
     ## Data parameters
@@ -113,6 +113,7 @@ def main():
     
     # Train the model
     trainer = model_trainer(model, batchSize, epochs, lr, device, Lambda, saveDir, numSaveEpochs)
+    # torch.autograd.set_detect_anomaly(True)
     trainer.train(img_data)
     
     # What does a sample image look like?
