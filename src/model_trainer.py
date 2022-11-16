@@ -47,7 +47,7 @@ class model_trainer():
         self.model.to(self.device)
             
         # Uniform distribution for values of t
-        self.T_dist = torch.distributions.uniform.Uniform(float(2.0), float(self.T-1))
+        self.T_dist = torch.distributions.uniform.Uniform(float(0.0), float(self.T-1))
         
         # Optimizer
         self.optim = torch.optim.Adam(self.model.parameters(), lr=lr)
@@ -67,29 +67,28 @@ class model_trainer():
     
     # Variational Lower Bound loss function
     # Inputs:
-    #   x_t - The noised image at time t-1 of shape (N, C, L, W)
-    #   q - The prior of the unnoised image at time t-1 of shape (N, C, L, W)
+    #   x_t - The noised image at time t of shape (N, C, L, W)
+    #   x_t1 - The unnoised image at time t-1 of shape (N, C, L, W)
     #   mean_t - Predicted mean at time t of shape (N, C, L, W)
     #   var_t - Predicted variance at time t of shape (N, C, L, W)
     #   t - The value timestep of shape (N)
     # Outputs:
     #   Loss scalar over the entire batch
-    def loss_vlb(self, x_t1, q, mean_t, var_t, t):
+    def loss_vlb(self, x_t, x_t1, mean_t, var_t, t):
         # Using the mean and variance, send the noised image
         # at time x_t through the distribution with the
-        # given mean and variance.
-        # Note: The mean is detached so that L_vlb is essentially
-        # the loss for only the variance
-        x_t1_pred = self.model.normal_dist(x_t1, mean_t.detach(), var_t)
+        # given mean and variance
+        x_t1_pred = self.model.normal_dist(x_t, mean_t, var_t)
         x_t1_pred += 1e-5 # Residual for small probabilities
         
-        # Convert the x_t-1 values to for easier notation
+        # Convert the x_t-1 values to p and q for easier notation
         p = x_t1_pred # Predictions
+        q = x_t1      # Target
         
         # Depending on the value of t, get the loss
         loss = torch.where(t==0,
-                    -torch.log(p).mean(),
-                    self.KL(p, q).mean()
+                    -torch.log(p).flatten(1,-1).sum(-1).mean(),
+                    self.KL(p, q).flatten(1,-1).sum(-1).mean()
         ).mean()
             
         return loss
@@ -127,35 +126,10 @@ class model_trainer():
     #   t - The value timestep of shape (N)
     # Outputs:
     #   Loss as a scalar over the entire batch
-    def lossFunct(self, epsilon, epsilon_pred, v, x_0, x_t, x_t1, t):
+    def lossFunct(self, epsilon, epsilon_pred, v, x_t, x_t1, t):
         # Get the mean and variance from the model
-        mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t)
-        var_t_pred = self.model.vs_to_variance(v, t)
-
-
-        ### Preparing for the real normal distribution
-
-        # Get the beta values for this batch of ts
-        beta_t, a_t, a_bar_t = self.model.get_scheduler_info(t)
-        
-        # Beta values for the previous value of t
-        _, _, a_bar_t1 = self.model.get_scheduler_info(t-1)
-
-        # Unsqueezing the values to match shape
-        beta_t = self.model.unsqueeze(beta_t, -1, 3)
-        a_t = self.model.unsqueeze(a_t, -1, 3)
-        a_bar_t = self.model.unsqueeze(a_bar_t, -1, 3)
-        a_bar_t1 = self.model.unsqueeze(a_bar_t1, -1, 3)
-
-        # Get the beta tilde value
-        beta_tilde_t = ((1-a_bar_t1)/(1-a_bar_t))*beta_t
-
-        # Get the true mean distribution
-        mean_t = ((torch.sqrt(a_bar_t1)*beta_t)/(1-a_bar_t))*x_0 +\
-            ((torch.sqrt(a_t)*(1-a_bar_t1))/(1-a_bar_t))*x_t
-
-        # Get the prior
-        q_x_t1 = self.model.normal_dist(x_t1, mean_t, beta_tilde_t)
+        mean_t = self.model.noise_to_mean(epsilon_pred, x_t, t)
+        var_t = self.model.vs_to_variance(v, t)
         
         """
         Note: The paper states that the loss for the
@@ -167,11 +141,11 @@ class model_trainer():
         
         # Get the losses
         loss_simple = self.loss_simple(epsilon, epsilon_pred)
-        loss_vlb = self.loss_vlb(x_t1, q_x_t1, mean_t_pred, var_t_pred, t)
-        # loss_var = self.loss_variance(var_t, t)
+        # loss_vlb = self.loss_vlb(x_t, x_t1, mean_t, var_t, t)
+        loss_var = self.loss_variance(var_t, t)
         
         # Return the combined loss
-        return loss_simple + self.Lambda*loss_vlb, loss_simple, self.Lambda*loss_vlb
+        return loss_simple + self.Lambda*loss_var
         
     
     
@@ -201,23 +175,26 @@ class model_trainer():
             t_vals = torch.round(t_vals).to(torch.long)
             
             # Noise the batch to time t-1
-            batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)
+            #batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)
             
             # Noise the batch to time t
             batch_x_t, epsilon_t = self.model.noise_batch(batch_x_0, t_vals)
+
+            # Get the epsilon value between t and t-1
+            #epsilon_real = epsilon_t-epsilon_t1
             
             # Send the noised data through the model to get the
-            # predicted noise and variance for batch at t-1
-            epsilon_t1_pred, v_t1_pred = self.model(batch_x_t, t_vals)
+            # predicted noise for batch at t-1
+            epsilon_t1_pred = self.model(batch_x_t, t_vals)
             
             # Get the loss
-            loss, loss_mean, loss_var = self.lossFunct(epsilon_t, epsilon_t1_pred, v_t1_pred, 
-                                  batch_x_0, batch_x_t, batch_x_t1, t_vals)
-            # loss = self.loss_simple(epsilon_t, epsilon_t1_pred)
+            # loss = self.lossFunct(epsilon_real, epsilon_t1_pred, v_t1_pred, 
+            #                       batch_x_t, batch_x_t1, t_vals)
+            loss = self.loss_simple(epsilon_t, epsilon_t1_pred)
             
             # Optimize the model
             loss.backward()
             self.optim.step()
             self.optim.zero_grad()
             
-            print(f"Loss at epoch #{epoch}  Combined: {loss.item()}    Mean: {loss_mean.item()}    Variance: {loss_var.item()}")
+            print(f"Loss at epoch #{epoch}: {loss.item()}")

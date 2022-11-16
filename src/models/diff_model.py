@@ -63,15 +63,15 @@ class diff_model(nn.Module):
         self.T = torch.tensor(T, device=device)
         
         # U_net model
-        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep).to(device)
+        self.unet = U_Net(inCh, inCh, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep).to(device)
         
         # What scheduler should be used to add noise
         # to the data?
         if self.beta_sched == "cosine":
             def f(t):
                 s = 0.008
-                return torch.cos(((t/T + s)/(1+s)) * (torch.pi/2))**2 /\
-                    torch.cos(torch.tensor((s/(1+s)) * (torch.pi/2)))**2
+                return torch.cos(((t/T + s)/(1+s)) * torch.pi/2)**2 /\
+                    torch.cos(torch.tensor((s/(1+s)) * torch.pi/2))**2
             self.beta_sched_funct = f
         else: # Linear
             self.beta_sched_funct = torch.linspace(1e-4, 0.02, T)
@@ -177,7 +177,7 @@ class diff_model(nn.Module):
         # Note: Function from the following:
         # https://github.com/hojonathanho/diffusion/issues/5
 
-
+        
         # Get the beta and a values for the batch of t values
         beta_t, a_t, a_bar_t = self.get_scheduler_info(t)
 
@@ -236,7 +236,6 @@ class diff_model(nn.Module):
     #   t - (Optional) Batch of t values of shape (N) or a single t value
     # Outputs:
     #   noise - Batch of noise predictions of shape (B, C, L, W)
-    #   v - Batch of v predictions of shape (B, C, L, W)
     def forward(self, x_t, t):
         
         # Make sure t is in the correct form
@@ -257,14 +256,10 @@ class diff_model(nn.Module):
                 t = self.t_emb(t)
         
         # Send the input through the U-net to get
-        # the model output
-        out = self.unet(x_t, t)
-
-        # Get the noise and v predictions
-        # for the image x_t-1
-        noise, v = out[:, self.inCh:], out[:, :self.inCh]
+        # the noise prediction for the image x_t-1
+        noise = self.unet(x_t, t)
         
-        return noise, v
+        return noise
     
     
     
@@ -309,14 +304,11 @@ class diff_model(nn.Module):
         x_t = x_t.to(self.device)
         t = t.to(self.device)
         
-        # Get the model predictions for the noise and v values
-        noise_t, v_t = self.forward(x_t, t)
+        # Get the model predictions
+        noise_t = self.forward(x_t, t)
         
         # Convert the noise to a mean
         mean_t = self.noise_to_mean(noise_t, x_t, t)
-
-        # Convert the v prediction variance
-        var_t = self.vs_to_variance(v_t, t)
         
         # Get the beta t value
         beta_t, _, _ = self.get_scheduler_info(t)
@@ -325,7 +317,7 @@ class diff_model(nn.Module):
         
         # Get the output of the predicted normal distribution
         # out = self.normal_dist(x_t, mean_t, var_t)
-        out = torch.where(t > 0, mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(var_t), mean_t)
+        out = torch.where(t > 0, mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(beta_t), mean_t)
         
         # Return the image scaled to (0, 255)
         # return unreduce_image(out)
