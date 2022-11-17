@@ -227,7 +227,7 @@ class diff_model(nn.Module):
         beta_tilde_t = self.unsqueeze(beta_tilde_t, -1, 3)
         
         # Return the variance value
-        return torch.exp(v*torch.log(beta_t) + (1-v)*torch.log(beta_tilde_t))
+        return torch.exp(torch.clamp(v*torch.log(beta_t) + (1-v)*torch.log(beta_tilde_t), -torch.tensor(30, device=beta_t.device), torch.tensor(30, device=beta_t.device)))
         
         
         
@@ -278,7 +278,10 @@ class diff_model(nn.Module):
     # Outputs:
     #   Distribution applied to x of the same shape as x
     def normal_dist(self, x, mean, var):
-        return (1/(var*torch.sqrt(torch.tensor(2*torch.pi))))*torch.exp((-1/2)*((x-mean)/var)**2)
+        var = torch.where(torch.logical_and(var<1e-5, var>=0), var+1e-5, var)
+        var = torch.where(torch.logical_and(var>-1e-5, var<0), var-1e-5, var)
+        return (1/(var*torch.sqrt(torch.tensor(2*torch.pi))))*\
+            torch.exp((-1/2)*((x-mean)/var)**2)
     
     
     

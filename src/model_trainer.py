@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from .helpers.image_rescale import reduce_image, unreduce_image
+import numpy as np
 
 
 cpu = torch.device('cpu')
@@ -47,6 +48,7 @@ class model_trainer():
         self.model.to(self.device)
             
         # Uniform distribution for values of t
+        self.t_vals = np.arange(0, self.T.detach().cpu().numpy())
         self.T_dist = torch.distributions.uniform.Uniform(float(2.0), float(self.T-1))
         
         # Optimizer
@@ -54,6 +56,29 @@ class model_trainer():
         
         # Loss function
         self.KL = nn.KLDivLoss(reduction="none").to(device)
+
+
+        # Loss cumulator for each value of t
+        self.losses = np.zeros((self.T, 10))
+        self.losses_ct = np.zeros(self.T, dtype=int)
+
+
+    
+    # Update the stored loss values for each value of t
+    # Inputs:
+    #   loss_vec - Vector of shape (batchSize) with the L_vlb loss
+    #              for each item in the batch
+    #   t - Vector of shape (batchSize) with the t values for each
+    #       item in the batch
+    def update_losses(self, loss_vec, t):
+        # Iterate over all losses and values of t
+        for t_val, loss in zip(t, loss_vec):
+            # Save the loss value to the losses array
+            if self.losses_ct[t_val] == 10:
+                self.losses[t_val] = np.concatenate((self.losses[t_val][1:], [loss]))
+            else:
+                self.losses[t_val, self.losses_ct[t_val]] = loss
+                self.losses_ct[t_val] += 1
         
         
     # Simple loss function (L_simple)
@@ -64,6 +89,19 @@ class model_trainer():
     #   Scalar loss value over the entire batch
     def loss_simple(self, epsilon, epsilon_pred):
         return torch.nn.functional.mse_loss(epsilon_pred, epsilon)
+
+
+    # KL Divergence loss
+    # Inputs:
+    #   y_true - Distribution we want the model to predict
+    #   y_pred - Predicted distribution the model predicted
+    # Outputs:
+    #   Scalar value of the KL divergence loss between the 2 distribution
+    def KLDivergence(self, y_true, y_pred):
+        # Handling small values
+        y_true = torch.where(y_true < 1e-5, y_true+1e-5, y_true)
+        y_pred = torch.where(y_pred < 1e-5, y_pred+1e-5, y_pred)
+        return (y_true*(y_true.log() - y_pred.log())).mean()
     
     # Variational Lower Bound loss function
     # Inputs:
@@ -88,11 +126,24 @@ class model_trainer():
         
         # Depending on the value of t, get the loss
         loss = torch.where(t==0,
-                    -torch.log(p).mean(),
-                    self.KL(p, q).mean()
-        ).mean()
+                    -torch.log(p).mean(-1).mean(-1).mean(-1),
+                    self.KLDivergence(q, p)
+        )
+
+        # # Update the loss storage
+        # t = t.detach().cpu().numpy()
+        # # self.update_losses(loss.detach().cpu().numpy(), t)
+
+        # # Have 10 loss values been sampled for each value of t?
+        # if np.sum(self.losses_ct) == self.losses.size - 20:
+        #     # The losses are based on the probability for each
+        #     # value of t
+        #     p_t = np.sqrt((self.losses**2).mean(-1))
+        #     p_t = p_t / p_t.sum()
+        #     loss = loss / torch.tensor(p_t[t], device=loss.device)
+        # # Otherwise, don't change the loss values
             
-        return loss
+        return loss.mean()
     
     
     
@@ -157,18 +208,9 @@ class model_trainer():
         # Get the prior
         q_x_t1 = self.model.normal_dist(x_t1, mean_t, beta_tilde_t)
         
-        """
-        Note: The paper states that the loss for the
-        variance should be L_vlb, but this is not what they
-        use in their implementation. Instead, they use
-        the KL divergence between the predictions and
-        the Beta_t_tilde values
-        """
-        
         # Get the losses
         loss_simple = self.loss_simple(epsilon, epsilon_pred)
         loss_vlb = self.loss_vlb(x_t1, q_x_t1, mean_t_pred, var_t_pred, t)
-        # loss_var = self.loss_variance(var_t, t)
         
         # Return the combined loss
         return loss_simple + self.Lambda*loss_vlb, loss_simple, self.Lambda*loss_vlb
@@ -197,8 +239,18 @@ class model_trainer():
             batch_x_0 = X[torch.randperm(X.shape[0])[:self.batchSize]].to(self.device)
             
             # Get values of t to noise the data
-            t_vals = self.T_dist.sample((self.batchSize,)).to(self.device)
-            t_vals = torch.round(t_vals).to(torch.long)
+            # Sample using weighted values if each t has 10 loss values
+            if np.sum(self.losses_ct) == self.losses.size - 20:
+                # Weights for each value of t
+                p_t = np.sqrt((self.losses**2).mean(-1))
+                p_t = p_t / p_t.sum()
+
+                # Sample the vaues of t
+                t_vals = torch.tensor(np.random.choice(self.t_vals, size=self.batchSize, p=p_t), device=batch_x_0.device)
+            # Sample uniformly until we get to that point
+            else:
+                t_vals = self.T_dist.sample((self.batchSize,)).to(self.device)
+                t_vals = torch.round(t_vals).to(torch.long)
             
             # Noise the batch to time t-1
             batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)

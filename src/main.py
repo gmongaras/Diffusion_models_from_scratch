@@ -27,7 +27,7 @@ def main():
     batchSize = 128
     device = "gpu"
     epochs = 10000
-    lr = 0.0001
+    lr = 0.0005
     t_dim = 256
     
     ## Saving params
@@ -91,10 +91,9 @@ def main():
     # Reshape the image to the nearest power of 2
     if reshapeType == "down":
         next_power_of_2 = 2**math.floor(math.log2(img_data.shape[-1]))
-        img_data = torch.nn.functional.interpolate(img_data, (next_power_of_2, next_power_of_2))
     elif reshapeType == "up":
         next_power_of_2 = 2**math.ceil(math.log2(img_data.shape[-1]))
-        img_data = torch.nn.functional.interpolate(img_data, (next_power_of_2, next_power_of_2))
+    img_data = torch.nn.functional.interpolate(img_data, (next_power_of_2, next_power_of_2))
     
     # Close the archive
     zip_file.close()
@@ -113,13 +112,13 @@ def main():
     
     # Train the model
     trainer = model_trainer(model, batchSize, epochs, lr, device, Lambda, saveDir, numSaveEpochs)
-    # torch.autograd.set_detect_anomaly(True)
+    torch.autograd.set_detect_anomaly(True)
     trainer.train(img_data)
     
     # What does a sample image look like?
     noise = torch.randn((1, *img_data.shape[1:])).to(model.device)
     imgs = []
-    for t in tqdm(range(T-1, 0, -1)):
+    for t in tqdm(range(T-1, 1, -1)):
         with torch.no_grad():
             noise = model.unnoise_batch(noise, t)
             imgs.append(torch.clamp(unreduce_image(noise[0]).cpu().detach().int(), 0, 255).permute(1, 2, 0))
