@@ -31,12 +31,12 @@ class convNext(nn.Sequential):
         #   Layer Norm
         #   1x1 conv
         self.block = nn.Sequential(
-            nn.Conv2d(inCh, inCh, 7, padding=3),
+            nn.Conv2d(inCh, inCh, 7, padding=3, groups=inCh),
             nn.GroupNorm(inCh, inCh),
-            nn.Conv2d(inCh, outCh, 1),
+            nn.Conv2d(inCh, inCh*4, 1),
             nn.GELU(),
-            nn.GroupNorm(outCh, outCh),
-            nn.Conv2d(outCh, outCh, 1),
+            nn.GroupNorm(inCh*4, inCh*4),
+            nn.Conv2d(inCh*4, outCh, 1),
         )
 
         # Residual path

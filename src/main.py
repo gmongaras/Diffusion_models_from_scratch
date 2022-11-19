@@ -24,7 +24,7 @@ def main():
     T = 1000
     Lambda = 0.001
     beta_sched = "cosine"
-    batchSize = 128
+    batchSize = 100
     device = "gpu"
     epochs = 50000
     lr = 0.0005

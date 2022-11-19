@@ -80,8 +80,8 @@ class diff_model(nn.Module):
         self.t_emb = PositionalEncoding(t_dim).to(device)
 
         # Output convolutions for the mean and variance
-        self.out_mean = nn.Conv2d(inCh, inCh, 3, padding=1)
-        self.out_var = nn.Conv2d(inCh, inCh, 3, padding=1)
+        self.out_mean = nn.Conv2d(inCh, inCh, 3, padding=1, groups=inCh)
+        self.out_var = nn.Conv2d(inCh, inCh, 3, padding=1, groups=inCh)
             
             
             
