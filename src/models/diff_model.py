@@ -78,6 +78,10 @@ class diff_model(nn.Module):
             
         # Used to embed the values of t so the model can use it
         self.t_emb = PositionalEncoding(t_dim).to(device)
+
+        # Output convolutions for the mean and variance
+        self.out_mean = nn.Conv2d(inCh, inCh, 3, padding=1)
+        self.out_var = nn.Conv2d(inCh, inCh, 3, padding=1)
             
             
             
@@ -91,28 +95,30 @@ class diff_model(nn.Module):
     #     a_t
     #     a_bar_t
     def get_scheduler_info(self, t):
-        # t value assertion
-        assert torch.all(t <= self.T-1) and torch.all(t >= -1), "The value of t can be in the range [-1, T-1]"
-        
-        # Values depend on the scheduler
-        if self.beta_sched == "cosine":
-            # Beta_t, a_t, and a_bar_t
-            # using the cosine scheduler
-            a_bar_t = self.beta_sched_funct(t)
-            a_bar_t1 = torch.where(t > 0, self.beta_sched_funct(t-1), a_bar_t)
-            beta_t = 1-(a_bar_t/(a_bar_t1))
-            beta_t = torch.clamp(beta_t, 0, 0.999)
-            a_t = 1-beta_t
-        else:
-            # Beta_t, a_t, and a_bar_t
-            # using the linear scheduler
-            beta_t = self.beta_sched_funct.repeat(t.shape[0])[t]
-            a_t = 1-beta_t
-            a_bar_t = torch.zeros(t.shape[0])
-            for b in range(0, t.shape[0]):
-                a_bar_t[b] = torch.prod(1-self.beta_sched_funct[:t[b]+1])
+        # Gradients don't matter here
+        with torch.no_grad():
+            # t value assertion
+            assert torch.all(t <= self.T-1) and torch.all(t >= -1), "The value of t can be in the range [-1, T-1]"
             
-        return beta_t.to(self.device), a_t.to(self.device), a_bar_t.to(self.device)
+            # Values depend on the scheduler
+            if self.beta_sched == "cosine":
+                # Beta_t, a_t, and a_bar_t
+                # using the cosine scheduler
+                a_bar_t = self.beta_sched_funct(t)
+                a_bar_t1 = torch.where(t > 0, self.beta_sched_funct(t-1), a_bar_t)
+                beta_t = 1-(a_bar_t/(a_bar_t1))
+                beta_t = torch.clamp(beta_t, 0, 0.999)
+                a_t = 1-beta_t
+            else:
+                # Beta_t, a_t, and a_bar_t
+                # using the linear scheduler
+                beta_t = self.beta_sched_funct.repeat(t.shape[0])[t]
+                a_t = 1-beta_t
+                a_bar_t = torch.zeros(t.shape[0])
+                for b in range(0, t.shape[0]):
+                    a_bar_t[b] = torch.prod(1-self.beta_sched_funct[:t[b]+1])
+                
+            return beta_t.to(self.device), a_t.to(self.device), a_bar_t.to(self.device)
     
     
     # Unsqueezing n times along the given dim.
@@ -198,7 +204,7 @@ class diff_model(nn.Module):
             # When t is 0, normal without correction
             (1/torch.sqrt(a_t))*(x_t - ((1-a_t)/torch.sqrt(1-a_bar_t))*epsilon),
 
-            # When t is 0, special with correction
+            # When t is not 0, special with correction
             (torch.sqrt(a_bar_t1)*beta_t)/(1-a_bar_t) * \
                 torch.clamp( (1/torch.sqrt(a_bar_t))*x_t - torch.sqrt((1-a_bar_t)/a_bar_t)*epsilon, -1, 1 ) + \
                 (((1-a_bar_t1)*torch.sqrt(a_t))/(1-a_bar_t))*x_t
@@ -225,9 +231,19 @@ class diff_model(nn.Module):
         
         beta_t = self.unsqueeze(beta_t, -1, 3)
         beta_tilde_t = self.unsqueeze(beta_tilde_t, -1, 3)
+
+        """
+        Note: The authors claim that v stayed in the range of values
+        it should without any type of restraint. I found that this was
+        the case at later stages of t, but at early stages of t (from about t = 20 to t = 0),
+        the value of v blew up. For some reason, when t is small, the model
+        has a very hard time learning a good representation of v.
+        So, I am adding a restraint to keep it between 0 and 1.
+        """
+        v = v.sigmoid()
         
         # Return the variance value
-        return torch.exp(torch.clamp(v*torch.log(beta_t) + (1-v)*torch.log(beta_tilde_t), -torch.tensor(30, device=beta_t.device), torch.tensor(30, device=beta_t.device)))
+        return torch.exp(torch.clamp(v*torch.log(beta_t) + (1-v)*torch.log(beta_tilde_t), torch.tensor(-30, device=beta_t.device), torch.tensor(30, device=beta_t.device)))
         
         
         
@@ -263,6 +279,10 @@ class diff_model(nn.Module):
         # Get the noise and v predictions
         # for the image x_t-1
         noise, v = out[:, self.inCh:], out[:, :self.inCh]
+
+        # Send the predictions through a convolution layer
+        noise = self.out_mean(noise)
+        v = self.out_var(v)
         
         return noise, v
     
@@ -328,7 +348,10 @@ class diff_model(nn.Module):
         
         # Get the output of the predicted normal distribution
         # out = self.normal_dist(x_t, mean_t, var_t)
-        out = torch.where(t > 0, mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(var_t), mean_t)
+        out = torch.where(t > 0,
+            mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(var_t),
+            mean_t
+        )
         
         # Return the image scaled to (0, 255)
         # return unreduce_image(out)

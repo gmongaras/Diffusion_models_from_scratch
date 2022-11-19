@@ -26,9 +26,10 @@ def main():
     beta_sched = "cosine"
     batchSize = 128
     device = "gpu"
-    epochs = 10000
+    epochs = 50000
     lr = 0.0005
     t_dim = 256
+    use_importance = False # Should importance sampling be used to sample values of t?
     
     ## Saving params
     saveDir = "models/"
@@ -111,8 +112,7 @@ def main():
         model.loadModel(loadDir, loadFile, loadDefFile,)
     
     # Train the model
-    trainer = model_trainer(model, batchSize, epochs, lr, device, Lambda, saveDir, numSaveEpochs)
-    torch.autograd.set_detect_anomaly(True)
+    trainer = model_trainer(model, batchSize, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance)
     trainer.train(img_data)
     
     # What does a sample image look like?
