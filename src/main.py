@@ -125,20 +125,24 @@ def main():
             
     # Convert the sample image to 0->255
     # and show it
+    plt.clf()
+    plt.axis('off')
     noise = torch.clamp(unreduce_image(noise).cpu().detach().int(), 0, 255)
     for img in noise:
         plt.imshow(img.permute(1, 2, 0))
-        plt.savefig("fig.png")
+        plt.savefig("fig.png", bbox_inches='tight', pad_inches=0, )
         plt.show()
 
     # Image evolution gif
+    plt.clf()
     fig, ax = plt.subplots()
+    ax.set_axis_off()
     for i in range(0, len(imgs)):
         title = plt.text(imgs[i].shape[0]//2, -5, f"t = {i}", ha='center')
         imgs[i] = [plt.imshow(imgs[i], animated=True), title]
-    animate = animation.ArtistAnimation(fig, imgs, interval=1, blit=False, repeat_delay=1000)
+    animate = animation.ArtistAnimation(fig, imgs, interval=1, blit=True, repeat_delay=1000)
     animate.save('diffusion.gif', fps=50)
-    plt.show()
+    # plt.show()
     
     
     

@@ -2,6 +2,9 @@ import torch
 from torch import nn
 from .helpers.image_rescale import reduce_image, unreduce_image
 import numpy as np
+import matplotlib.pyplot as plt
+import os
+import threading
 
 
 cpu = torch.device('cpu')
@@ -168,6 +171,21 @@ class model_trainer():
     # Outputs:
     #   Loss as a scalar over the entire batch
     def lossFunct(self, epsilon, epsilon_pred, v, x_0, x_t, x_t1, t):
+        
+        """
+        There's one important note I looked passed when reading the original
+        Denoising Diffusion Probabilistic Models paper. I noticed that L_simple
+        was high on low values of t but low on high values of t. I thought
+        this was an issue, but it is not. As stated in the paper
+        
+        "In particular, our diffusion process setup in Section 4 causes the 
+        simplified objective to down-weight loss terms corresponding to small t.  
+        These terms train the network to denoise data with very small amounts of 
+        noise, so it is beneficial to down-weight them so that the network can 
+        focus on more difficult denoising tasks at larger t terms"
+        (page 5 part 3.4)
+        """
+
         # Get the mean and variance from the model
         mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t)
         var_t_pred = self.model.vs_to_variance(v, t)
@@ -245,11 +263,18 @@ class model_trainer():
         # Scale the image to (-1, 1)
         if X.max() > 1.0:
             X = reduce_image(X)
+
+        # Losses over epochs
+        self.losses_comb = []
+        self.losses_mean = []
+        self.losses_var = []
+        self.epochs_list = []
         
         for epoch in range(1, self.epochs+1):
-            # Model saving
+            # Model saving and graphing
             if epoch%self.numSaveEpochs == 0:
                 self.model.saveModel(self.saveDir, epoch)
+                self.graph_losses()
             
             # Get a sample of `batchSize` number of images and put
             # it on the correct device
@@ -288,5 +313,33 @@ class model_trainer():
             loss.backward()
             self.optim.step()
             self.optim.zero_grad()
+
+            # Save the loss values
+            self.losses_comb.append(loss.item())
+            self.losses_mean.append(loss_mean.item())
+            self.losses_var.append(loss_var.item())
+            self.epochs_list.append(epoch)
             
-            print(f"Loss at epoch #{epoch}  Combined: {loss.item()}    Mean: {loss_mean.item()}    Variance: {loss_var.item()}")
+            print(f"Loss at epoch #{epoch}  Combined: {round(loss.item(), 4)}    Mean: {round(loss_mean.item(), 4)}    Variance: {round(loss_var.item(), 4)}")
+    
+
+
+
+    # Graph losses function for a thread
+    def graph_losses_helper(self, fig, ax):
+        ax.set_title("Losses over epochs")
+        ax.set_ylabel("Loss")
+        ax.set_xlabel("Epoch")
+        ax.plot(self.epochs_list, self.losses_comb, label="Combined loss")
+        ax.plot(self.epochs_list, self.losses_mean, label="Mean loss")
+        ax.plot(self.epochs_list, self.losses_var, label="Variance loss")
+        ax.legend()
+        fig.savefig(self.saveDir + os.sep + "lossGraph.png", format="png")
+
+    # Graph the losses through training
+    def graph_losses(self):
+        # Async saving
+        plt.clf()
+        fig, ax = plt.subplots()
+        thr = threading.Thread(target=self.graph_losses_helper, args=(fig, ax))
+        thr.start()
