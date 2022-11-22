@@ -19,7 +19,8 @@ class convNext(nn.Sequential):
     #   outCh - Number of chanels the ouput batch should have
     #   use_t - Should time conditioning be used?
     #   t_dim - Number of dimensions in the time input embedding
-    def __init__(self, inCh, outCh, use_t=False, t_dim=None):
+    #   dropoutRate - Rate to apply dropout to each layer in the block
+    def __init__(self, inCh, outCh, use_t=False, t_dim=None, dropoutRate=0.0):
         super(convNext, self).__init__()
 
         # Implementation found at https://arxiv.org/pdf/2201.03545.pdf
@@ -33,6 +34,7 @@ class convNext(nn.Sequential):
         self.block = nn.Sequential(
             nn.Conv2d(inCh, inCh, 7, padding=3, groups=inCh),
             nn.GroupNorm(inCh, inCh),
+            nn.Dropout2d(dropoutRate),
             nn.Conv2d(inCh, inCh*4, 1),
             nn.GELU(),
             nn.GroupNorm(inCh*4, inCh*4),

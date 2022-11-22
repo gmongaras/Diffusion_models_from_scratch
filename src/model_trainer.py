@@ -256,6 +256,9 @@ class model_trainer():
     # Inputs:
     #   X - A batch of images of shape (B, C, L, W)
     def train(self, X):
+
+        # Put the model is train mode
+        self.model.train()
         
         # Put the data on the cpu
         X = X.to(cpu)
@@ -335,6 +338,7 @@ class model_trainer():
         ax.plot(self.epochs_list, self.losses_var, label="Variance loss")
         ax.legend()
         fig.savefig(self.saveDir + os.sep + "lossGraph.png", format="png")
+        plt.close(fig)
 
     # Graph the losses through training
     def graph_losses(self):

@@ -28,7 +28,8 @@ def main():
     device = "gpu"
     epochs = 50000
     lr = 0.0005
-    t_dim = 256
+    t_dim = 128
+    dropoutRate = 0.1
     use_importance = False # Should importance sampling be used to sample values of t?
     
     ## Saving params
@@ -105,7 +106,7 @@ def main():
     
     
     ### Model Creation
-    model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched, t_dim, device)
+    model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched, t_dim, device, False, dropoutRate)
     
     # Optional model loading
     if loadModel == True:
@@ -125,7 +126,7 @@ def main():
             
     # Convert the sample image to 0->255
     # and show it
-    plt.clf()
+    plt.close('all')
     plt.axis('off')
     noise = torch.clamp(unreduce_image(noise).cpu().detach().int(), 0, 255)
     for img in noise:
@@ -134,7 +135,7 @@ def main():
         plt.show()
 
     # Image evolution gif
-    plt.clf()
+    plt.close('all')
     fig, ax = plt.subplots()
     ax.set_axis_off()
     for i in range(0, len(imgs)):

@@ -24,8 +24,10 @@ class diff_model(nn.Module):
     # useDeep - True to use deep residual blocks, False to use not deep residual blocks
     # t_dim - Embedding dimenion for the timesteps
     # device - Device to put the model on (gpu or cpu)
+    # useDeep - Use a deep version of the model or a shallow version
+    # dropoutRate - Rate to apply dropout to the U-net model
     def __init__(self, inCh, embCh, chMult, num_heads, num_res_blocks,
-                 T, beta_sched, t_dim, device, useDeep=False):
+                 T, beta_sched, t_dim, device, useDeep=False, dropoutRate=0.0):
         super(diff_model, self).__init__()
         
         self.beta_sched = beta_sched
@@ -63,7 +65,7 @@ class diff_model(nn.Module):
         self.T = torch.tensor(T, device=device)
         
         # U_net model
-        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep).to(device)
+        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep, dropoutRate).to(device)
         
         # What scheduler should be used to add noise
         # to the data?
@@ -312,6 +314,9 @@ class diff_model(nn.Module):
     # Outputs:
     #   Image of shape (N, C, L, W) at timestep t-1, unnoised by one timestep
     def unnoise_batch(self, x_t, t):
+
+        # Put the model is eval mode
+        self.eval()
         
         # # Scale the image to (-1, 1)
         # if x_t.max() <= 1.0:

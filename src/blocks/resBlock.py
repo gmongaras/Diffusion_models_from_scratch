@@ -18,13 +18,14 @@ class resBlock(nn.Module):
     #   head_res - Optional parameter. Specify the resolution each
     #              head operates at rather than the number of heads. If
     #              this is not None, num_heads is ignored
-    def __init__(self, inCh, outCh, t_dim, num_heads=2, head_res=None):
+    #   dropoutRate - Rate to apply dropout in the convnext blocks
+    def __init__(self, inCh, outCh, t_dim, num_heads=2, head_res=None, dropoutRate=0.0):
         super(resBlock, self).__init__()
 
         self.block = nn.Sequential(
-            convNext(inCh, inCh, True, t_dim),
-            convNext(inCh, outCh, True, t_dim),
-            convNext(outCh, outCh, True, t_dim),
+            convNext(inCh, inCh, True, t_dim, dropoutRate),
+            convNext(inCh, outCh, True, t_dim, dropoutRate),
+            convNext(outCh, outCh, True, t_dim, dropoutRate),
             # Non_local_MH(outCh, num_heads, head_res, spatial=True),
         )
 
