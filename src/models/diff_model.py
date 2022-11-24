@@ -6,6 +6,7 @@ from ..blocks.PositionalEncoding import PositionalEncoding
 import os
 import json
 import threading
+from ..blocks.convNext import convNext
 
 
 
@@ -82,8 +83,10 @@ class diff_model(nn.Module):
         self.t_emb = PositionalEncoding(t_dim).to(device)
 
         # Output convolutions for the mean and variance
-        self.out_mean = nn.Conv2d(inCh, inCh, 3, padding=1, groups=inCh)
-        self.out_var = nn.Conv2d(inCh, inCh, 3, padding=1, groups=inCh)
+        # self.out_mean = nn.Conv2d(inCh, inCh, 3, padding=1, groups=inCh)
+        # self.out_var = nn.Conv2d(inCh, inCh, 3, padding=1, groups=inCh)
+        self.out_mean = convNext(inCh, inCh).to(device)
+        self.out_var = convNext(inCh, inCh).to(device)
             
             
             
@@ -170,19 +173,22 @@ class diff_model(nn.Module):
         epsilon = torch.randn(noise_shape, device=self.device)
         
         return epsilon
-    
-    
+
+
+
     # Used to convert a batch of noise predictions to
     # a batch of mean predictions
     # Inputs:
     #   epsilon - The epsilon value for the mean of shape (N, C, L, W)
     #   x_t - The image to unoise of shape (N, C, L, W)
     #   t - A batch of t values for the beta schedulers of shape (N)
+    #   corrected - True to calculate the corrected mean that doesn't
+    #               go outside the bounds. False otherwise.
     # Outputs:
     #   A tensor of shape (N, C, L, W) representing the mean of the
-    #     unnoised image x_t-1
-    def noise_to_mean(self, epsilon, x_t, t):
-        # Note: Function from the following:
+    #     unnoised image
+    def noise_to_mean(self, epsilon, x_t, t, corrected=True):
+        # Note: Corrected function from the following:
         # https://github.com/hojonathanho/diffusion/issues/5
 
 
@@ -201,7 +207,12 @@ class diff_model(nn.Module):
             t = self.unsqueeze(t, -1, 3)
 
 
-        # Calculate the mean and return it
+        # Calculate the uncorrected mean
+        if corrected == False:
+            return (1/torch.sqrt(a_t))*(x_t - ((1-a_t)/torch.sqrt(1-a_bar_t))*epsilon)
+
+
+        # Calculate the corrected mean and return it
         mean = torch.where(t == 0,
             # When t is 0, normal without correction
             (1/torch.sqrt(a_t))*(x_t - ((1-a_t)/torch.sqrt(1-a_bar_t))*epsilon),
@@ -212,10 +223,6 @@ class diff_model(nn.Module):
                 (((1-a_bar_t1)*torch.sqrt(a_t))/(1-a_bar_t))*x_t
         )
         return mean
-        #return (1/torch.sqrt(a_t))*(x_t - ((1-a_t)/torch.sqrt(1-a_bar_t))*epsilon)
-        return (torch.sqrt(a_bar_t1)*beta_t)/(1-a_bar_t) * \
-            torch.clamp( (1/torch.sqrt(a_bar_t))*x_t - torch.sqrt((1-a_bar_t)/a_bar_t)*epsilon, -1, 1 ) + \
-            (((1-a_bar_t1)*torch.sqrt(a_t))/(1-a_bar_t))*x_t
     
     
     

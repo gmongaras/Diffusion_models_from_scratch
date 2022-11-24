@@ -33,12 +33,12 @@ class convNext(nn.Sequential):
         #   1x1 conv
         self.block = nn.Sequential(
             nn.Conv2d(inCh, inCh, 7, padding=3, groups=inCh),
-            nn.GroupNorm(inCh, inCh),
+            nn.GroupNorm(1, inCh),
             nn.Dropout2d(dropoutRate),
-            nn.Conv2d(inCh, inCh*4, 1),
+            nn.Conv2d(inCh, inCh*2, 1),
             nn.GELU(),
-            nn.GroupNorm(inCh*4, inCh*4),
-            nn.Conv2d(inCh*4, outCh, 1),
+            # nn.GroupNorm(1, inCh*2),
+            nn.Conv2d(inCh*2, outCh, 1),
         )
 
         # Residual path
@@ -60,9 +60,11 @@ class convNext(nn.Sequential):
 
         if self.use_t and t != None:
             X = self.block[0](X)
+            X = self.block[1](X)
+            X = self.block[2](X)
             t = self.clsProj(t).unsqueeze(-1).unsqueeze(-1)
-            X += t
-            for b in self.block[1:]:
+            X = X + t
+            for b in self.block[3:]:
                 X = b(X)
         else:
             X = self.block(X)

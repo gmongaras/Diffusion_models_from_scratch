@@ -187,7 +187,7 @@ class model_trainer():
         """
 
         # Get the mean and variance from the model
-        mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t)
+        mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t, True)
         var_t_pred = self.model.vs_to_variance(v, t)
 
 
@@ -263,9 +263,12 @@ class model_trainer():
         # Put the data on the cpu
         X = X.to(cpu)
         
-        # Scale the image to (-1, 1)
-        if X.max() > 1.0:
-            X = reduce_image(X)
+        # # Scale the image to (-1, 1)
+        # if X.max() > 1.0:
+        #     X = reduce_image(X)
+
+        # Should the images be scaled?
+        scaled = True if X.max() > 1.0 else False
 
         # Losses over epochs
         self.losses_comb = []
@@ -282,6 +285,10 @@ class model_trainer():
             # Get a sample of `batchSize` number of images and put
             # it on the correct device
             batch_x_0 = X[torch.randperm(X.shape[0])[:self.batchSize]].to(self.device)
+
+            # Scale the images
+            if scaled:
+                batch_x_0 = reduce_image(batch_x_0)
             
             # Get values of t to noise the data
             # Sample using weighted values if each t has 10 loss values
