@@ -55,7 +55,7 @@ class model_trainer():
             
         # Uniform distribution for values of t
         self.t_vals = np.arange(0, self.T.detach().cpu().numpy())
-        self.T_dist = torch.distributions.uniform.Uniform(float(2.0)-float(0.499), float(self.T-1)+float(0.499))
+        self.T_dist = torch.distributions.uniform.Uniform(float(0.0)-float(0.499), float(self.T)+float(0.499))
         
         # Optimizer
         self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr)
@@ -145,20 +145,33 @@ class model_trainer():
     # KL divergence between two gaussians
     # Formula derived from: https://stats.stackexchange.com/questions/7440/kl-divergence-between-two-univariate-gaussians
     # Inputs:
-    #   mean_real - The mean of the real distribution
-    #   mean_fake - Mean of the predicted distribution
-    #   std_real - Standard deviation of the real distribution
-    #   std_fake - Standard Deviation of the predicted distribution
+    #   t - Values of t of shape (N)
+    #   mean_real - The mean of the real distribution of shape (N, C, L, W)
+    #   mean_fake - Mean of the predicted distribution of shape (N, C, L, W)
+    #   var_real - Variance of the real distribution of shape (N, C, L, W)
+    #   var_fake - Variance of the predicted distribution of shape (N, C, L, W)
+    #   x_0 - The unoised image at time t = 0 of shape (N, C, L, W)
     # Outputs:
     #   Loss vector for each part of the entire batch
-    def loss_vlb_gauss(self, mean_real, mean_fake, std_real, std_fake):
+    def loss_vlb_gauss(self, t, mean_real, mean_fake, var_real, var_fake, x_0):
+        std_real = torch.sqrt(var_real)
+        std_fake = torch.sqrt(var_fake)
+
         # Note:
         # p (mean_real, std_real) - Distribution we want the model to predict
         # q (mean_fake, std_fake) - Distribution the model is predicting
-        return (torch.log(std_fake/std_real) \
-            + ((std_real**2) + (mean_real-mean_fake)**2)/(2*(std_fake**2)) \
+        output = (torch.log(std_fake/std_real) \
+            + ((var_real) + (mean_real-mean_fake)**2)/(2*(var_fake)) \
             - torch.tensor(1/2))\
             .flatten(1,-1).mean(-1)
+        
+        # Replace where t = 0
+        output = torch.where(t == 0,
+            -torch.distributions.Normal(mean_fake, std_fake).log_prob(x_0).flatten(1,-1).mean(-1),
+            output
+        )
+
+        return output
     
     
     # Combined loss
@@ -187,68 +200,62 @@ class model_trainer():
         """
 
         # Get the mean and variance from the model
-        mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t, True)
+        mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t, False)
         var_t_pred = self.model.vs_to_variance(v, t)
 
 
         ### Preparing for the real normal distribution
 
-        # Get the beta values for this batch of ts
-        beta_t, a_t, a_bar_t = self.model.get_scheduler_info(t)
-        
-        # Beta values for the previous value of t
-        _, _, a_bar_t1 = self.model.get_scheduler_info(t-1)
+        # Get the scheduler information
+        beta_t = self.model.scheduler.sample_beta_t(t)
+        a_bar_t = self.model.scheduler.sample_a_bar_t(t)
+        a_bar_t1 = self.model.scheduler.sample_a_bar_t1(t)
+        beta_tilde_t = self.model.scheduler.sample_beta_tilde_t(t)
+        sqrt_a_bar_t1 = self.model.scheduler.sample_sqrt_a_bar_t1(t)
+        sqrt_a_t = self.model.scheduler.sample_sqrt_a_t(t)
 
         # Unsqueezing the values to match shape
         beta_t = self.model.unsqueeze(beta_t, -1, 3)
-        a_t = self.model.unsqueeze(a_t, -1, 3)
         a_bar_t = self.model.unsqueeze(a_bar_t, -1, 3)
         a_bar_t1 = self.model.unsqueeze(a_bar_t1, -1, 3)
-
-        # Get the beta tilde value
-        beta_tilde_t = ((1-a_bar_t1)/(1-a_bar_t))*beta_t
+        beta_tilde_t = self.model.unsqueeze(beta_tilde_t, -1, 3)
+        sqrt_a_bar_t1 = self.model.unsqueeze(sqrt_a_bar_t1, -1, 3)
+        sqrt_a_t = self.model.unsqueeze(sqrt_a_t, -1, 3)
 
         # Get the true mean distribution
-        mean_t = ((torch.sqrt(a_bar_t1)*beta_t)/(1-a_bar_t))*x_0 +\
-            ((torch.sqrt(a_t)*(1-a_bar_t1))/(1-a_bar_t))*x_t
-
-        # Get the prior
-        q_x_t1 = self.model.normal_dist(x_t1, mean_t, beta_tilde_t) + 1e-10
+        mean_t = ((sqrt_a_bar_t1*beta_t)/(1-a_bar_t))*x_0 +\
+            ((sqrt_a_t*(1-a_bar_t1))/(1-a_bar_t))*x_t
         
         # Get the losses
         loss_simple = self.loss_simple(epsilon, epsilon_pred)
-        # loss_vlb = self.loss_vlb(x_t1, q_x_t1, mean_t_pred, var_t_pred, t)
-        loss_vlb = self.loss_vlb_gauss(mean_t, mean_t_pred.detach(), beta_tilde_t, var_t_pred)*self.Lambda
+        loss_vlb = self.loss_vlb_gauss(t, mean_t, mean_t_pred.detach(), beta_tilde_t, var_t_pred, x_0)*self.Lambda
 
         # Get the combined loss
         loss_comb = loss_simple + loss_vlb
-
-        # Reduce the losses
-        loss_simple = loss_simple.mean()
-        loss_vlb = loss_vlb.mean()
 
 
 
 
         # Update the loss storage for importance sampling
         if self.use_importance:
-            t = t.detach().cpu().numpy()
-            loss = loss_comb.detach().cpu()
-            self.update_losses(loss, t)
+            with torch.no_grad():
+                t = t.detach().cpu().numpy()
+                loss = loss_vlb.detach().cpu()
+                self.update_losses(loss, t)
 
-            # Have 10 loss values been sampled for each value of t?
-            if np.sum(self.losses_ct) == self.losses.size - 20:
-                # The losses are based on the probability for each
-                # value of t
-                p_t = np.sqrt((self.losses**2).mean(-1))
-                p_t = p_t / p_t.sum()
-                loss = loss / torch.tensor(p_t[t], device=loss.device)
-            # Otherwise, don't change the loss values
+                # Have 10 loss values been sampled for each value of t?
+                if np.sum(self.losses_ct) == self.losses.size - 20:
+                    # The losses are based on the probability for each
+                    # value of t
+                    p_t = np.sqrt((self.losses**2).mean(-1))
+                    p_t = p_t / p_t.sum()
+                    loss = loss / torch.tensor(p_t[t], device=loss.device)
+                # Otherwise, don't change the loss values
 
-        
-        
-        # Return the combined loss
-        return loss_comb.mean(), loss_simple, loss_vlb
+
+
+        # Return the losses
+        return loss_comb.mean(), loss_simple.mean(), loss_vlb.mean()
         
     
     
@@ -330,7 +337,7 @@ class model_trainer():
             self.losses_var.append(loss_var.item())
             self.epochs_list.append(epoch)
             
-            print(f"Loss at epoch #{epoch}  Combined: {round(loss.item(), 4)}    Mean: {round(loss_mean.item(), 4)}    Variance: {round(loss_var.item(), 4)}")
+            print(f"Loss at epoch #{epoch}  Combined: {round(loss.item(), 4)}    Mean: {round(loss_mean.item(), 4)}    Variance: {round(loss_var.item(), 6)}")
     
 
 

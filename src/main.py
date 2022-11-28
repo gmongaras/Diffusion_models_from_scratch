@@ -26,7 +26,7 @@ def main():
     beta_sched = "cosine"
     batchSize = 100
     device = "gpu"
-    epochs = 50000
+    epochs = 100000
     lr = 0.0001
     t_dim = 128
     dropoutRate = 0.2

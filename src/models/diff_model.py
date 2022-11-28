@@ -7,6 +7,7 @@ import os
 import json
 import threading
 from ..blocks.convNext import convNext
+from .Variance_Scheduler import Variance_Scheduler
 
 
 
@@ -68,16 +69,8 @@ class diff_model(nn.Module):
         # U_net model
         self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep, dropoutRate).to(device)
         
-        # What scheduler should be used to add noise
-        # to the data?
-        if self.beta_sched == "cosine":
-            def f(t):
-                s = 0.008
-                return torch.cos(((t/T + s)/(1+s)) * (torch.pi/2))**2 /\
-                    torch.cos(torch.tensor((s/(1+s)) * (torch.pi/2)))**2
-            self.beta_sched_funct = f
-        else: # Linear
-            self.beta_sched_funct = torch.linspace(1e-4, 0.02, T)
+        # Variance scheduler for values of beta and alpha
+        self.scheduler = Variance_Scheduler(beta_sched, T, self.device)
             
         # Used to embed the values of t so the model can use it
         self.t_emb = PositionalEncoding(t_dim).to(device)
@@ -90,42 +83,6 @@ class diff_model(nn.Module):
             
             
             
-    # Used to get the value of beta, a and a_bar from the schedulers
-    # Inputs:
-    #   t - Batch of t values of shape (N) 
-    #       Note: t values can be in the range [0, T-1]
-    # Outputs:
-    #   Batch of beta and a values:
-    #     beta_t
-    #     a_t
-    #     a_bar_t
-    def get_scheduler_info(self, t):
-        # Gradients don't matter here
-        with torch.no_grad():
-            # t value assertion
-            assert torch.all(t <= self.T-1) and torch.all(t >= -1), "The value of t can be in the range [-1, T-1]"
-            
-            # Values depend on the scheduler
-            if self.beta_sched == "cosine":
-                # Beta_t, a_t, and a_bar_t
-                # using the cosine scheduler
-                a_bar_t = self.beta_sched_funct(t)
-                a_bar_t1 = torch.where(t > 0, self.beta_sched_funct(t-1), a_bar_t)
-                beta_t = 1-(a_bar_t/(a_bar_t1))
-                beta_t = torch.clamp(beta_t, 0, 0.999)
-                a_t = 1-beta_t
-            else:
-                # Beta_t, a_t, and a_bar_t
-                # using the linear scheduler
-                beta_t = self.beta_sched_funct.repeat(t.shape[0])[t]
-                a_t = 1-beta_t
-                a_bar_t = torch.zeros(t.shape[0])
-                for b in range(0, t.shape[0]):
-                    a_bar_t[b] = torch.prod(1-self.beta_sched_funct[:t[b]+1])
-                
-            return beta_t.to(self.device), a_t.to(self.device), a_bar_t.to(self.device)
-    
-    
     # Unsqueezing n times along the given dim.
     # Note: dim can be 0 or -1
     def unsqueeze(self, X, dim, n):
@@ -144,18 +101,15 @@ class diff_model(nn.Module):
     #   Batch of noised images of shape (N, C, L, W)
     #   Noise added to the images of shape (N, C, L, W)
     def noise_batch(self, X, t):
-        # Make sure t isn't too large
-        t = torch.min(t, self.T)
-        
         # Sample gaussian noise
         epsilon = torch.randn_like(X, device=self.device)
         
         # The value of a_bar_t at timestep t depending on the scheduler
-        a_bar_t = self.unsqueeze(self.get_scheduler_info(t)[2], -1, 3)
-        t = self.unsqueeze(t, -1, 3)
+        sqrt_a_bar_t = self.unsqueeze(self.scheduler.sample_sqrt_a_bar_t(t), -1, 3)
+        sqrt_1_minus_a_bar_t = self.unsqueeze(self.scheduler.sample_sqrt_1_minus_a_bar_t(t), -1, 3)
         
         # Noise the images
-        return torch.sqrt(a_bar_t)*X + torch.sqrt(1-a_bar_t)*epsilon, epsilon
+        return sqrt_a_bar_t*X + sqrt_1_minus_a_bar_t*epsilon, epsilon
     
     
     
@@ -193,34 +147,42 @@ class diff_model(nn.Module):
 
 
         # Get the beta and a values for the batch of t values
-        beta_t, a_t, a_bar_t = self.get_scheduler_info(t)
-
-        # Get the previous a bar values for the batch of t-1 values
-        a_bar_t1 = torch.where(t == 0, 0, self.get_scheduler_info(t-1)[2])
+        beta_t = self.scheduler.sample_beta_t(t)
+        a_t = self.scheduler.sample_a_t(t)
+        sqrt_a_t = self.scheduler.sample_sqrt_a_t(t)
+        a_bar_t = self.scheduler.sample_a_bar_t(t)
+        sqrt_a_bar_t = self.scheduler.sample_sqrt_a_bar_t(t)
+        sqrt_1_minus_a_bar_t = self.scheduler.sample_sqrt_1_minus_a_bar_t(t)
+        a_bar_t1 = self.scheduler.sample_a_bar_t1(t)
+        sqrt_a_bar_t1 = self.scheduler.sample_sqrt_a_bar_t1(t)
 
         # Make sure everything is in the correct shape
         beta_t = self.unsqueeze(beta_t, -1, 3)
         a_t = self.unsqueeze(a_t, -1, 3)
+        sqrt_a_t = self.unsqueeze(sqrt_a_t, -1, 3)
         a_bar_t = self.unsqueeze(a_bar_t, -1, 3)
+        sqrt_a_bar_t = self.unsqueeze(sqrt_a_bar_t, -1, 3)
+        sqrt_1_minus_a_bar_t = self.unsqueeze(sqrt_1_minus_a_bar_t, -1, 3)
         a_bar_t1 = self.unsqueeze(a_bar_t1, -1, 3)
+        sqrt_a_bar_t1 = self.unsqueeze(sqrt_a_bar_t1, -1, 3)
         if len(t.shape) == 1:
             t = self.unsqueeze(t, -1, 3)
 
 
         # Calculate the uncorrected mean
         if corrected == False:
-            return (1/torch.sqrt(a_t))*(x_t - ((1-a_t)/torch.sqrt(1-a_bar_t))*epsilon)
+            return (1/sqrt_a_t)*(x_t - (beta_t/sqrt_1_minus_a_bar_t)*epsilon)
 
 
         # Calculate the corrected mean and return it
         mean = torch.where(t == 0,
             # When t is 0, normal without correction
-            (1/torch.sqrt(a_t))*(x_t - ((1-a_t)/torch.sqrt(1-a_bar_t))*epsilon),
+            (1/sqrt_a_t)*(x_t - (beta_t/sqrt_1_minus_a_bar_t)*epsilon),
 
             # When t is not 0, special with correction
-            (torch.sqrt(a_bar_t1)*beta_t)/(1-a_bar_t) * \
-                torch.clamp( (1/torch.sqrt(a_bar_t))*x_t - torch.sqrt((1-a_bar_t)/a_bar_t)*epsilon, -1, 1 ) + \
-                (((1-a_bar_t1)*torch.sqrt(a_t))/(1-a_bar_t))*x_t
+            (sqrt_a_bar_t1*beta_t)/(1-a_bar_t) * \
+                torch.clamp( (1/sqrt_a_bar_t)*x_t - (sqrt_1_minus_a_bar_t/sqrt_a_bar_t)*epsilon, -1, 1 ) + \
+                (((1-a_bar_t1)*sqrt_a_t)/(1-a_bar_t))*x_t
         )
         return mean
     
@@ -229,17 +191,10 @@ class diff_model(nn.Module):
     # Used to convert a batch of predicted v values to
     # a batch of variance predictions
     def vs_to_variance(self, v, t):
-        # Get the beta values for this batch of ts
-        beta_t, _, a_bar_t = self.get_scheduler_info(t)
-        
-        # Beta values for the previous value of t
-        _, _, a_bar_t1 = self.get_scheduler_info(t-1)
-        
-        # Get the beta tilde value
-        beta_tilde_t = ((1-a_bar_t1)/(1-a_bar_t))*beta_t
-        
-        beta_t = self.unsqueeze(beta_t, -1, 3)
-        beta_tilde_t = self.unsqueeze(beta_tilde_t, -1, 3)
+
+        # Get the scheduler information
+        beta_t = self.unsqueeze(self.scheduler.sample_beta_t(t), -1, 3)
+        beta_tilde_t = self.unsqueeze(self.scheduler.sample_beta_tilde_t(t), -1, 3)
 
         """
         Note: The authors claim that v stayed in the range of values
@@ -307,10 +262,13 @@ class diff_model(nn.Module):
     # Outputs:
     #   Distribution applied to x of the same shape as x
     def normal_dist(self, x, mean, var):
-        var = torch.where(torch.logical_and(var<1e-5, var>=0), var+1e-5, var)
-        var = torch.where(torch.logical_and(var>-1e-5, var<0), var-1e-5, var)
-        return (1/(var*torch.sqrt(torch.tensor(2*torch.pi))))*\
-            torch.exp((-1/2)*((x-mean)/var)**2)
+        std = torch.sqrt(var)
+
+        std = torch.where(torch.logical_and(std<1e-5, std>=0), std+1e-5, std)
+        std = torch.where(torch.logical_and(std>-1e-5, std<0), std-1e-5, std)
+        return (1/(std*torch.sqrt(torch.tensor(2*torch.pi))))\
+            * torch.exp((-1/2)*((x-mean)/std)**2) \
+            + 1e-10
     
     
     
@@ -348,15 +306,10 @@ class diff_model(nn.Module):
         noise_t, v_t = self.forward(x_t, t)
         
         # Convert the noise to a mean
-        mean_t = self.noise_to_mean(noise_t, x_t, t)
+        mean_t = self.noise_to_mean(noise_t, x_t, t, True)
 
         # Convert the v prediction variance
         var_t = self.vs_to_variance(v_t, t)
-        
-        # Get the beta t value
-        beta_t, _, _ = self.get_scheduler_info(t)
-        beta_t = self.unsqueeze(beta_t, -1, 3)
-        t = self.unsqueeze(t, -1, 3)
         
         # Get the output of the predicted normal distribution
         # out = self.normal_dist(x_t, mean_t, var_t)
