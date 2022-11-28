@@ -216,6 +216,7 @@ class diff_model(nn.Module):
     #   t - (Optional) Batch of t values of shape (N) or a single t value
     # Outputs:
     #   noise - Batch of noise predictions of shape (B, C, L, W)
+    #   v - Batch of v predictions of shape (B, C, L, W)
     def forward(self, x_t, t):
         
         # Make sure t is in the correct form
@@ -247,7 +248,7 @@ class diff_model(nn.Module):
         noise = self.out_mean(noise)
         v = self.out_var(v)
         
-        return noise
+        return noise, v
     
     
     
@@ -301,8 +302,8 @@ class diff_model(nn.Module):
         x_t = x_t.to(self.device)
         t = t.to(self.device)
         
-        # Get the model predictions
-        noise_t = self.forward(x_t, t)
+        # Get the model predictions for the noise and v values
+        noise_t, v_t = self.forward(x_t, t)
         
         # Convert the noise to a mean
         mean_t = self.noise_to_mean(noise_t, x_t, t, True)

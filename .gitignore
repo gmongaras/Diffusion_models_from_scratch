@@ -1,7 +1,13 @@
+results/*
 models/*
 data/*
 *.gif
 *.png
+
+
+!.gitignore
+!models/README.md
+!data/README.md
 
 
 # Byte-compiled / optimized / DLL files
