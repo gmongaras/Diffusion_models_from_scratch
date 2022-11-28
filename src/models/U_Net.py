@@ -27,7 +27,8 @@ class U_Net(nn.Module):
     # num_heads - Number of heads in each multi-head non-local block
     # num_res_blocks - Number of residual blocks on the up/down path
     # useDeep - True to use deep residual blocks, False to use not deep residual blocks
-    def __init__(self, inCh, outCh, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep=False):
+    # dropoutRate - Rate to apply dropout in the model
+    def __init__(self, inCh, outCh, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep=False, dropoutRate=0.0):
         super(U_Net, self).__init__()
         
         # What type of block should be used? deep or not deep?
@@ -53,7 +54,9 @@ class U_Net(nn.Module):
         #     blocks.append(Non_local_MH(embCh*(chMult*i), head_res=16))
         #     curCh = embCh*(chMult*i)
         for i in range(1, num_res_blocks+1):
-            blocks.append(resBlock(curCh, embCh*(chMult*i), t_dim, head_res=16))
+            blocks.append(resBlock(curCh, embCh*(chMult*i), t_dim, head_res=16, dropoutRate=dropoutRate))
+            if i != num_res_blocks:
+                blocks.append(nn.Conv2d(embCh*(chMult*i), embCh*(chMult*i), kernel_size=3, stride=2, padding=1))
             curCh = embCh*(chMult*i)
         self.downBlocks = nn.Sequential(
             *blocks
@@ -70,9 +73,9 @@ class U_Net(nn.Module):
         #     self.resBlock(intermediateCh, intermediateCh, useCls=True, cls_dim=t_dim)
         # )
         self.intermediate = nn.Sequential(
-            convNext(intermediateCh, intermediateCh, True, t_dim),
+            convNext(intermediateCh, intermediateCh, True, t_dim, dropoutRate=dropoutRate),
             Non_local_MH(intermediateCh, head_res=16),
-            convNext(intermediateCh, intermediateCh, True, t_dim),
+            convNext(intermediateCh, intermediateCh, True, t_dim, dropoutRate=dropoutRate),
         )
         
         
@@ -88,9 +91,10 @@ class U_Net(nn.Module):
         #         blocks.append(self.upBlock(embCh*(chMult*i), embCh*(chMult*(i-1)), useCls=True, cls_dim=t_dim))
         for i in range(num_res_blocks, 0, -1):
             if i == 1:
-                blocks.append(resBlock(2*embCh*(chMult*i), outCh, t_dim, num_heads=1))
+                blocks.append(resBlock(2*embCh*(chMult*i), outCh, t_dim, num_heads=1, dropoutRate=dropoutRate))
             else:
-                blocks.append(resBlock(2*embCh*(chMult*i), embCh*(chMult*(i-1)), t_dim, head_res=16))
+                blocks.append(resBlock(2*embCh*(chMult*i), embCh*(chMult*(i-1)), t_dim, head_res=16, dropoutRate=dropoutRate))
+                blocks.append(nn.ConvTranspose2d(embCh*(chMult*(i-1)), embCh*(chMult*(i-1)), kernel_size=4, stride=2, padding=1))
         self.upBlocks = nn.Sequential(
             *blocks
         )
@@ -131,11 +135,14 @@ class U_Net(nn.Module):
         #         X = b(X)
         #     if type(b) == self.downBlock:
         #         residuals.append(X.clone())
-        for b in self.downBlocks:
-            X = b(X, t)
+        b = 0
+        while b < len(self.downBlocks):
+            X = self.downBlocks[b](X, t)
             residuals.append(X.clone())
-            if b != self.downBlocks[-1]:
-                X = self.downSamp(X)
+            b += 1
+            if b < len(self.downBlocks) and type(self.downBlocks[b]) == nn.Conv2d:
+                X = self.downBlocks[b](X)
+                b += 1
             
         # Reverse the residuals
         residuals = residuals[::-1]
@@ -172,11 +179,16 @@ class U_Net(nn.Module):
         #             X = b(X, t)
         #         except TypeError:
         #             X = b(X)
-        for b in self.upBlocks:
-            X = b(torch.cat((X, residuals[0]), dim=1), t)
+        b = 0
+        while b < len(self.upBlocks):
+            X = self.upBlocks[b](torch.cat((X, residuals[0]), dim=1), t)
+            b += 1
+            if b < len(self.upBlocks) and type(self.upBlocks[b]) == nn.ConvTranspose2d:
+                X = self.upBlocks[b](X)
+                b += 1
             residuals = residuals[1:]
-            if b != self.upBlocks[-1]:
-                X = self.upSamp(X)
+            # if b != self.upBlocks[-1]:
+            #     X = self.upSamp(X)
         
         # Send the output through the final block
         # and return the output

@@ -15,10 +15,15 @@ A diffusion model is defined by
 [I will attempt to add this soon]
 https://arxiv.org/abs/2102.09672
 
-## Faster interence
+## Faster inference
 
 [I will also attempt to do this soon]
 https://arxiv.org/abs/2010.02502
+
+## Classifier Free Guidance
+
+[I will also attempt to implement this soon]
+https://arxiv.org/abs/2207.12598
 
 
 
