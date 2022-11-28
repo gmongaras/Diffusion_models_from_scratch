@@ -41,7 +41,7 @@ def main():
     ## Loading params
     loadModel = False
     loadDir = "models/"
-    loadFile = "model_1000.pkl"
+    loadFile = "model_50000.pkl"
     loadDefFile = "model_params_1000.json"
     
     ## Data parameters

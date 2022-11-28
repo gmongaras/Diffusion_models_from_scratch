@@ -113,8 +113,8 @@ class model_trainer():
     
     # Variational Lower Bound loss function
     # Inputs:
-    #   x_t - The noised image at time t-1 of shape (N, C, L, W)
-    #   q - The prior of the unnoised image at time t-1 of shape (N, C, L, W)
+    #   x_t - The noised image at time t of shape (N, C, L, W)
+    #   x_t1 - The unnoised image at time t-1 of shape (N, C, L, W)
     #   mean_t - Predicted mean at time t of shape (N, C, L, W)
     #   var_t - Predicted variance at time t of shape (N, C, L, W)
     #   t - The value timestep of shape (N)
@@ -129,8 +129,9 @@ class model_trainer():
         x_t1_pred = self.model.normal_dist(x_t1, mean_t.detach(), var_t)
         x_t1_pred += 1e-10 # Residual for small probabilities
         
-        # Convert the x_t-1 values to for easier notation
+        # Convert the x_t-1 values to p and q for easier notation
         p = x_t1_pred # Predictions
+        q = x_t1      # Target
         
         # Depending on the value of t, get the loss
         loss = torch.where(t==0,
@@ -313,14 +314,17 @@ class model_trainer():
                 t_vals = torch.round(t_vals).to(torch.long)
             
             # Noise the batch to time t-1
-            batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)
+            #batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)
             
             # Noise the batch to time t
             batch_x_t, epsilon_t = self.model.noise_batch(batch_x_0, t_vals)
+
+            # Get the epsilon value between t and t-1
+            #epsilon_real = epsilon_t-epsilon_t1
             
             # Send the noised data through the model to get the
-            # predicted noise and variance for batch at t-1
-            epsilon_t1_pred, v_t1_pred = self.model(batch_x_t, t_vals)
+            # predicted noise for batch at t-1
+            epsilon_t1_pred = self.model(batch_x_t, t_vals)
             
             # Get the loss
             loss, loss_mean, loss_var = self.lossFunct(epsilon_t, epsilon_t1_pred, v_t1_pred, 
