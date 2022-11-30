@@ -56,7 +56,7 @@ def main():
     if training:
         # Open the zip files
         archive1 = zipfile.ZipFile('data/Imagenet64_train_part1.zip', 'r')
-        archive2 = zipfile.ZipFile('data/Imagenet64_train_part1.zip', 'r')
+        archive2 = zipfile.ZipFile('data/Imagenet64_train_part2.zip', 'r')
         
         # Read the pickle data
         data = []
@@ -111,12 +111,7 @@ def main():
         trainer.train(img_data)
     
     # What does a sample image look like?
-    noise = torch.randn((1, 3, 64, 64)).to(model.device)
-    imgs = []
-    for t in tqdm(range(T-1, 1, -1)):
-        with torch.no_grad():
-            noise = model.unnoise_batch(noise, t)
-            imgs.append(torch.clamp(unreduce_image(noise[0]).cpu().detach().int(), 0, 255).permute(1, 2, 0))
+    noise, imgs = model.sample_imgs(1, True, True)
             
     # Convert the sample image to 0->255
     # and show it

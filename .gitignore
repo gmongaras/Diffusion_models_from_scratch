@@ -3,6 +3,7 @@ models/*
 data/*
 *.gif
 *.png
+eval/saved_states/*
 
 
 !.gitignore

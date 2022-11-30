@@ -61,23 +61,35 @@ class Variance_Scheduler():
         self.beta_tilde_t = ((1-self.a_bar_t1)/(1-self.a_bar_t))*self.beta_t
 
 
+        # Move the tensors to the correct device
+        self.beta_t = self.beta_t.to(self.device)
+        self.a_t = self.a_t.to(self.device)
+        self.a_bar_t = self.a_bar_t.to(self.device)
+        self.a_bar_t1 = self.a_bar_t1.to(self.device)
+        self.sqrt_a_t = self.sqrt_a_t.to(self.device)
+        self.sqrt_a_bar_t = self.sqrt_a_bar_t.to(self.device)
+        self.sqrt_1_minus_a_bar_t = self.sqrt_1_minus_a_bar_t.to(self.device)
+        self.sqrt_a_bar_t1 = self.sqrt_a_bar_t1.to(self.device)
+        self.beta_tilde_t = self.beta_tilde_t.to(self.device)
+
+
 
     # Sampling methods
     def sample_a_t(self, t):
-        return self.a_t[t].to(self.device)
+        return self.a_t[t]
     def sample_beta_t(self, t):
-        return self.beta_t[t].to(self.device)
+        return self.beta_t[t]
     def sample_a_bar_t(self, t):
-        return self.a_bar_t[t].to(self.device)
+        return self.a_bar_t[t]
     def sample_a_bar_t1(self, t):
-        return self.a_bar_t1[t].to(self.device)
+        return self.a_bar_t1[t]
     def sample_sqrt_a_t(self, t):
-        return self.sqrt_a_t[t].to(self.device)
+        return self.sqrt_a_t[t]
     def sample_sqrt_a_bar_t(self, t):
-        return self.sqrt_a_bar_t[t].to(self.device)
+        return self.sqrt_a_bar_t[t]
     def sample_sqrt_1_minus_a_bar_t(self, t):
-        return self.sqrt_1_minus_a_bar_t[t].to(self.device)
+        return self.sqrt_1_minus_a_bar_t[t]
     def sample_sqrt_a_bar_t1(self, t):
-        return self.sqrt_a_bar_t1[t].to(self.device)
+        return self.sqrt_a_bar_t1[t]
     def sample_beta_tilde_t(self, t):
-        return self.beta_tilde_t[t].to(self.device)
+        return self.beta_tilde_t[t]
