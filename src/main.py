@@ -24,24 +24,24 @@ def main():
     T = 4000
     Lambda = 0.001
     beta_sched = "cosine"
-    batchSize = 100
+    batchSize = 115
     device = "gpu"
-    epochs = 100000
-    lr = 0.0001
+    epochs = 1000000
+    lr = 0.0002
     t_dim = 128
-    dropoutRate = 0.2
+    dropoutRate = 0.3
     use_importance = False # Should importance sampling be used to sample values of t?
 
     training = True
     
     ## Saving params
     saveDir = "models/"
-    numSaveEpochs = 1000
+    numSaveEpochs = 10000
     
     ## Loading params
     loadModel = False
     loadDir = "models/"
-    loadFile = "model_1000.pkl"
+    loadFile = "model_10000.pkl"
     loadDefFile = "model_params_1000.json"
     
     ## Data parameters
@@ -131,7 +131,7 @@ def main():
         title = plt.text(imgs[i].shape[0]//2, -5, f"t = {i}", ha='center')
         imgs[i] = [plt.imshow(imgs[i], animated=True), title]
     animate = animation.ArtistAnimation(fig, imgs, interval=1, blit=True, repeat_delay=1000)
-    animate.save('diffusion.gif', fps=50)
+    animate.save('diffusion.gif', writer=animation.PillowWriter(fps=50))
     # plt.show()
     
     

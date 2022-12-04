@@ -42,7 +42,7 @@ class convNext(nn.Sequential):
         )
 
         # Residual path
-        self.res = nn.Conv2d(inCh, outCh, 1)
+        self.res = nn.Conv2d(inCh, outCh, 1) if inCh != outCh else nn.Identity()
 
         # Optional class vector applied over the channels
         self.use_t = use_t

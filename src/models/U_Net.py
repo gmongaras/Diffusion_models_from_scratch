@@ -9,6 +9,7 @@ from ..blocks.BigGAN_Res_Deep import BigGAN_Res_Deep
 from ..blocks.Non_local_MH import Non_local_MH
 from ..blocks.resBlock import resBlock
 from ..blocks.convNext import convNext
+from ..blocks.Efficient_Channel_Attention import Efficient_Channel_Attention
 
 
 
@@ -75,6 +76,7 @@ class U_Net(nn.Module):
         self.intermediate = nn.Sequential(
             convNext(intermediateCh, intermediateCh, True, t_dim, dropoutRate=dropoutRate),
             Non_local_MH(intermediateCh, head_res=16),
+            # Efficient_Channel_Attention(intermediateCh),
             convNext(intermediateCh, intermediateCh, True, t_dim, dropoutRate=dropoutRate),
         )
         
