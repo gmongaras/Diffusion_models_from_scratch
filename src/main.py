@@ -18,18 +18,18 @@ def main():
     ## Model params
     inCh = 3
     embCh = 64
-    chMult = 2
+    chMult = 1
     num_heads = 8
     num_res_blocks = 4
     T = 4000
     Lambda = 0.001
     beta_sched = "cosine"
-    batchSize = 115
+    batchSize = 64
     device = "gpu"
     epochs = 1000000
     lr = 0.0002
-    t_dim = 128
-    dropoutRate = 0.3
+    t_dim = 256
+    dropoutRate = 0.1
     use_importance = False # Should importance sampling be used to sample values of t?
 
     training = True
@@ -42,7 +42,7 @@ def main():
     loadModel = False
     loadDir = "models/"
     loadFile = "model_10000.pkl"
-    loadDefFile = "model_params_1000.json"
+    loadDefFile = "model_params_10000.json"
     
     ## Data parameters
     reshapeType = "down" # Should the data be reshaped to the nearest power of 2 down, up, or not at all?

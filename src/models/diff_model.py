@@ -281,12 +281,8 @@ class diff_model(nn.Module):
     #   Image of shape (N, C, L, W) at timestep t-1, unnoised by one timestep
     def unnoise_batch(self, x_t, t):
 
-        # Put the model is eval mode
+        # Put the model in eval mode
         self.eval()
-        
-        # # Scale the image to (-1, 1)
-        # if x_t.max() <= 1.0:
-        #     x_t = reduce_image(x_t)
         
         # Make sure t is in the correct form
         if type(t) == int or type(t) == float:
@@ -313,14 +309,12 @@ class diff_model(nn.Module):
         var_t = self.vs_to_variance(v_t, t)
         
         # Get the output of the predicted normal distribution
-        # out = self.normal_dist(x_t, mean_t, var_t)
-        out = torch.where(self.unsqueeze(t, -1, 3) > 0,
+        out = torch.where(self.unsqueeze(t, -1, 3) > 1,
             mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(var_t),
             mean_t
         )
         
-        # Return the image scaled to (0, 255)
-        # return unreduce_image(out)
+        # Return the images
         return out
 
 
@@ -335,7 +329,7 @@ class diff_model(nn.Module):
 
         # Iterate T times to denoise the images
         imgs = []
-        for t in tqdm(range(self.T-1, 1, -1)) if use_tqdm else range(self.T-1, 1, -1):
+        for t in tqdm(range(self.T, 0, -1)) if use_tqdm else range(self.T, 0, -1):
             with torch.no_grad():
                 output = self.unnoise_batch(output, t)
                 if save_intermediate:

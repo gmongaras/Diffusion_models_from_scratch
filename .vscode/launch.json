@@ -12,7 +12,7 @@
             // "module": "eval.compute_FID",
             // "module": "eval.compute_imagenet_stats",
             // "module": "eval.compute_model_stats",
-            //"module": "tests.diff_model_noise_test",
+            // "module": "tests.diff_model_noise_test",
             "console": "integratedTerminal",
             "justMyCode": false
         }

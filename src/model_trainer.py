@@ -55,7 +55,7 @@ class model_trainer():
             
         # Uniform distribution for values of t
         self.t_vals = np.arange(0, self.T.detach().cpu().numpy())
-        self.T_dist = torch.distributions.uniform.Uniform(float(0.0)-float(0.499), float(self.T)+float(0.499))
+        self.T_dist = torch.distributions.uniform.Uniform(float(1.0)-float(0.499), float(self.T)+float(0.499))
         
         # Optimizer
         self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr)
@@ -110,6 +110,8 @@ class model_trainer():
         y_true = torch.where(y_true < 1e-5, y_true+1e-5, y_true)
         y_pred = torch.where(y_pred < 1e-5, y_pred+1e-5, y_pred)
         return (y_true*(y_true.log() - y_pred.log())).flatten(1, -1).mean(-1)
+
+        
     
     # Variational Lower Bound loss function which computes the
     # KL divergence between two gaussians
@@ -135,8 +137,8 @@ class model_trainer():
             - torch.tensor(1/2))\
             .flatten(1,-1).mean(-1)
         
-        # Replace where t = 0
-        output = torch.where(t == 0,
+        # Replace where t = 1
+        output = torch.where(t == 1,
             -torch.distributions.Normal(mean_fake, std_fake).log_prob(x_0).flatten(1,-1).mean(-1),
             output
         )
@@ -170,7 +172,7 @@ class model_trainer():
         """
 
         # Get the mean and variance from the model
-        mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t, False)
+        mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t, True)
         var_t_pred = self.model.vs_to_variance(v, t)
 
 

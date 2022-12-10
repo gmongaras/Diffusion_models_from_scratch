@@ -25,13 +25,13 @@ def compute_model_stats():
 
     # Parameters
     model_dirname = "models"
-    model_filename = "model_100000.pkl"
-    model_params_filename = "model_params_100000.json"
+    model_filename = "model_680000.pkl"
+    model_params_filename = "model_params_680000.json"
 
     device = "gpu"
 
-    num_fake_imgs = 10000
-    batchSize = 300
+    num_fake_imgs = 1000
+    batchSize = 350
 
 
 
@@ -64,7 +64,7 @@ def compute_model_stats():
             cur_batch_size = min(num_fake_imgs, batchSize*(i+1))-batchSize*i
 
             # Generate some images
-            imgs = model.sample_imgs(cur_batch_size)
+            imgs = model.sample_imgs(cur_batch_size, use_tqdm=True)
 
             # Resize the images to be of shape (3, 299, 299)
             imgs = transforms.Compose([transforms.Resize((299,299))])(imgs.to(torch.int8))
@@ -88,8 +88,8 @@ def compute_model_stats():
 
 
     # Save the mean and variance
-    np.save("eval/saved_stats/fake_mean.npy", mean)
-    np.save("eval/saved_stats/fake_var.npy", var)
+    np.save("eval/saved_stats/fake_mean_new.npy", mean)
+    np.save("eval/saved_stats/fake_var_new.npy", var)
 
 
 
