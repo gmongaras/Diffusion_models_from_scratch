@@ -17,6 +17,12 @@ gpu = torch.device('cuda:0')
 class model_trainer():
     # diff_model - A diffusion model to train
     # batchSize - Batch size to train the model with
+    # numSteps - Number of steps to breakup the batchSize into. Instead
+    #            of taking 1 massive step where the whole batch is loaded into
+    #            memory, the batchSize is broken up into sizes of
+    #            batchSize//numSteps so that it can fit into memory. Mathematically,
+    #            the update will be the same, as a single batch update, but
+    #            the update is distributed across smaller updates to fit into memory.
     # epochs - Number of epochs to train the model for
     # lr - Learning rate of the model optimizer
     # device - Device to put the model and data on (gpu or cpu)
@@ -24,11 +30,12 @@ class model_trainer():
     # numSaveEpochs - Number of epochs until saving the models
     # use_importance - True to use importance sampling to sample values of t,
     #                  False to use uniform sampling.
-    def __init__(self, diff_model, batchSize, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance):
+    def __init__(self, diff_model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance):
         # Saved info
         self.T = diff_model.T
         self.model = diff_model
-        self.batchSize = batchSize
+        self.batchSize = batchSize//numSteps
+        self.numSteps = numSteps
         self.epochs = epochs
         self.Lambda = Lambda
         self.saveDir = saveDir
@@ -242,10 +249,6 @@ class model_trainer():
         # Put the data on the cpu
         X = X.to(cpu)
         
-        # # Scale the image to (-1, 1)
-        # if X.max() > 1.0:
-        #     X = reduce_image(X)
-
         # Should the images be scaled?
         scaled = True if X.max() > 1.0 else False
 
@@ -255,61 +258,85 @@ class model_trainer():
         self.losses_var = []
         self.epochs_list = []
         
+        # Iterate over the desiered number of epochs
         for epoch in range(1, self.epochs+1):
             # Model saving and graphing
             if epoch%self.numSaveEpochs == 0:
                 self.model.saveModel(self.saveDir, epoch)
                 self.graph_losses()
-            
-            # Get a sample of `batchSize` number of images and put
-            # it on the correct device
-            batch_x_0 = X[torch.randperm(X.shape[0])[:self.batchSize]].to(self.device)
 
-            # Scale the images
-            if scaled:
-                batch_x_0 = reduce_image(batch_x_0)
-            
-            # Get values of t to noise the data
-            # Sample using weighted values if each t has 10 loss values
-            if self.use_importance == True and np.sum(self.losses_ct) == self.losses.size - 20:
-                # Weights for each value of t
-                p_t = np.sqrt((self.losses**2).mean(-1))
-                p_t = p_t / p_t.sum()
+            # Cumulative loss over the batch over all steps
+            losses_comb_s = torch.tensor(0.0, requires_grad=False)
+            losses_mean_s = torch.tensor(0.0, requires_grad=False)
+            losses_var_s = torch.tensor(0.0, requires_grad=False)
 
-                # Sample the values of t
-                t_vals = torch.tensor(np.random.choice(self.t_vals, size=self.batchSize, p=p_t), device=batch_x_0.device)
-            # Sample uniformly until we get to that point or if importantce
-            # sampling is not used
-            else:
-                t_vals = self.T_dist.sample((self.batchSize,)).to(self.device)
-                t_vals = torch.round(t_vals).to(torch.long)
+            # Iterate over all the steps before updating the model
+            for step in range(0, self.numSteps):
+                # Get a sample of `batchSize` number of images and put
+                # it on the correct device
+                batch_x_0 = X[torch.randperm(X.shape[0])[:self.batchSize]].to(self.device)
+
+                # Scale the images
+                if scaled:
+                    batch_x_0 = reduce_image(batch_x_0)
+                
+                # Get values of t to noise the data
+                # Sample using weighted values if each t has 10 loss values
+                if self.use_importance == True and np.sum(self.losses_ct) == self.losses.size - 20:
+                    # Weights for each value of t
+                    p_t = np.sqrt((self.losses**2).mean(-1))
+                    p_t = p_t / p_t.sum()
+
+                    # Sample the values of t
+                    t_vals = torch.tensor(np.random.choice(self.t_vals, size=self.batchSize, p=p_t), device=batch_x_0.device)
+                # Sample uniformly until we get to that point or if importantce
+                # sampling is not used
+                else:
+                    t_vals = self.T_dist.sample((self.batchSize,)).to(self.device)
+                    t_vals = torch.round(t_vals).to(torch.long)
+                
+                # Noise the batch to time t-1
+                batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)
+                
+                # Noise the batch to time t
+                batch_x_t, epsilon_t = self.model.noise_batch(batch_x_0, t_vals)
+                
+                # Send the noised data through the model to get the
+                # predicted noise and variance for batch at t-1
+                epsilon_t1_pred, v_t1_pred = self.model(batch_x_t, t_vals)
+                
+                # Get the loss
+                loss, loss_mean, loss_var = self.lossFunct(epsilon_t, epsilon_t1_pred, v_t1_pred, 
+                                    batch_x_0, batch_x_t, batch_x_t1, t_vals)
+
+                # Scale the loss to be consistent with the batch size. If the loss
+                # isn't scaled, then the loss will be treated as an independent
+                # batch for each step. If it is scaled by the step size, then the loss will
+                # be treated as a part of a larger batchsize which is what we want
+                # to acheive when using steps.
+                loss = loss/self.numSteps
+                loss_mean /= self.numSteps
+                loss_var /= self.numSteps
+
+                # Backprop the loss, but save the intermediate gradients
+                loss.backward()
+
+                # Save the loss values
+                losses_comb_s += loss.cpu().detach()
+                losses_mean_s += loss_mean.cpu().detach()
+                losses_var_s += loss_var.cpu().detach()
             
-            # Noise the batch to time t-1
-            batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)
-            
-            # Noise the batch to time t
-            batch_x_t, epsilon_t = self.model.noise_batch(batch_x_0, t_vals)
-            
-            # Send the noised data through the model to get the
-            # predicted noise and variance for batch at t-1
-            epsilon_t1_pred, v_t1_pred = self.model(batch_x_t, t_vals)
-            
-            # Get the loss
-            loss, loss_mean, loss_var = self.lossFunct(epsilon_t, epsilon_t1_pred, v_t1_pred, 
-                                  batch_x_0, batch_x_t, batch_x_t1, t_vals)
-            
-            # Update the model
-            loss.backward()
+            # Update the model using all losses over the steps
             self.optim.step()
             self.optim.zero_grad()
 
             # Save the loss values
-            self.losses_comb.append(loss.item())
-            self.losses_mean.append(loss_mean.item())
-            self.losses_var.append(loss_var.item())
+            self.losses_comb.append(losses_comb_s.item())
+            self.losses_mean.append(losses_mean_s.item())
+            self.losses_var.append(losses_var_s.item())
             self.epochs_list.append(epoch)
             
-            print(f"Loss at epoch #{epoch}  Combined: {round(loss.item(), 4)}    Mean: {round(loss_mean.item(), 4)}    Variance: {round(loss_var.item(), 6)}")
+            print(f"Loss at epoch #{epoch}  Combined: {round(losses_comb_s.item(), 4)}    Mean: {round(losses_mean_s.item(), 4)}    Variance: {round(losses_var_s.item(), 6)}")
     
 
 

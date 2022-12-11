@@ -25,8 +25,8 @@ def compute_model_stats():
 
     # Parameters
     model_dirname = "models"
-    model_filename = "model_680000.pkl"
-    model_params_filename = "model_params_680000.json"
+    model_filename = "model_200000.pkl"
+    model_params_filename = "model_params_200000.json"
 
     device = "gpu"
 
@@ -88,8 +88,8 @@ def compute_model_stats():
 
 
     # Save the mean and variance
-    np.save("eval/saved_stats/fake_mean_new.npy", mean)
-    np.save("eval/saved_stats/fake_var_new.npy", var)
+    np.save("eval/saved_stats/fake_mean_200k.npy", mean)
+    np.save("eval/saved_stats/fake_var_200k.npy", var)
 
 
 

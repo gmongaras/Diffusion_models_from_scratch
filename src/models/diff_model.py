@@ -308,7 +308,7 @@ class diff_model(nn.Module):
         # Convert the v prediction variance
         var_t = self.vs_to_variance(v_t, t)
         
-        # Get the output of the predicted normal distribution
+        # Get the output of the predicted pixel values
         out = torch.where(self.unsqueeze(t, -1, 3) > 1,
             mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(var_t),
             mean_t

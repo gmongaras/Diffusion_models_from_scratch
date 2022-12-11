@@ -17,14 +17,20 @@ def main():
     
     ## Model params
     inCh = 3
-    embCh = 64
+    embCh = 128
     chMult = 1
     num_heads = 8
     num_res_blocks = 4
     T = 4000
     Lambda = 0.001
     beta_sched = "cosine"
-    batchSize = 64
+    batchSize = 129
+    numSteps = 3            # Number of steps to breakup the batchSize into. Instead
+                            # of taking 1 massive step where the whole batch is loaded into
+                            # memory, the batchSize is broken up into sizes of
+                            # batchSize//numSteps so that it can fit into memory. Mathematically,
+                            # the update will be the same, as a single batch update, but
+                            # the update is distributed across smaller updates to fit into memory
     device = "gpu"
     epochs = 1000000
     lr = 0.0002
@@ -41,8 +47,8 @@ def main():
     ## Loading params
     loadModel = False
     loadDir = "models/"
-    loadFile = "model_10000.pkl"
-    loadDefFile = "model_params_10000.json"
+    loadFile = "model_600000.pkl"
+    loadDefFile = "model_params_600000.json"
     
     ## Data parameters
     reshapeType = "down" # Should the data be reshaped to the nearest power of 2 down, up, or not at all?
@@ -107,7 +113,7 @@ def main():
     
     # Train the model
     if training:
-        trainer = model_trainer(model, batchSize, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance)
+        trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance)
         trainer.train(img_data)
     
     # What does a sample image look like?
