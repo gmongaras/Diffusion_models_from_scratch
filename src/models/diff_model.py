@@ -8,6 +8,7 @@ import json
 import threading
 from ..blocks.convNext import convNext
 from .Variance_Scheduler import Variance_Scheduler
+from tqdm import tqdm
 
 
 
@@ -280,12 +281,8 @@ class diff_model(nn.Module):
     #   Image of shape (N, C, L, W) at timestep t-1, unnoised by one timestep
     def unnoise_batch(self, x_t, t):
 
-        # Put the model is eval mode
+        # Put the model in eval mode
         self.eval()
-        
-        # # Scale the image to (-1, 1)
-        # if x_t.max() <= 1.0:
-        #     x_t = reduce_image(x_t)
         
         # Make sure t is in the correct form
         if type(t) == int or type(t) == float:
@@ -311,16 +308,37 @@ class diff_model(nn.Module):
         # Convert the v prediction variance
         var_t = self.vs_to_variance(v_t, t)
         
-        # Get the output of the predicted normal distribution
-        # out = self.normal_dist(x_t, mean_t, var_t)
-        out = torch.where(t > 0,
+        # Get the output of the predicted pixel values
+        out = torch.where(self.unsqueeze(t, -1, 3) > 1,
             mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(var_t),
             mean_t
         )
         
-        # Return the image scaled to (0, 255)
-        # return unreduce_image(out)
+        # Return the images
         return out
+
+
+
+    # Sample a batch of generated samples from the model
+    def sample_imgs(self, batchSize, save_intermediate=False, use_tqdm=False):
+        # Make sure the model is in eval mode
+        self.eval()
+
+        # The initial image is pure noise
+        output = torch.randn((batchSize, 3, 64, 64)).to(self.device)
+
+        # Iterate T times to denoise the images
+        imgs = []
+        for t in tqdm(range(self.T, 0, -1)) if use_tqdm else range(self.T, 0, -1):
+            with torch.no_grad():
+                output = self.unnoise_batch(output, t)
+                if save_intermediate:
+                    imgs.append(torch.clamp(unreduce_image(output[0]).cpu().detach().int(), 0, 255).permute(1, 2, 0))
+        
+        # Return the output images and potential intermediate output
+        return (output,imgs) if save_intermediate else output
+
+
     
     def saveModel_T(self, saveDir, epoch=None):
         if epoch:

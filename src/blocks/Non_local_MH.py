@@ -27,9 +27,6 @@ class Non_local_MH(nn.Module):
         # Get the number of heads using the head resolution
         if head_res != None:
             self.num_heads = inCh//head_res
-
-        # Residual block
-        self.resBlock = nn.Conv2d(inCh, inCh, 1)
         
         # Query, Key, Value convolutions
         self.Q_conv = nn.Conv2d(inCh, inCh, 1)
@@ -40,7 +37,7 @@ class Non_local_MH(nn.Module):
         self.O_conv = nn.Conv2d(inCh, inCh, 1)
         
         # Layer normalization
-        self.LN = nn.GroupNorm(inCh, inCh)
+        self.LN = nn.GroupNorm(1, inCh)
 
         # Is this spatial or channel attention
         self.spatial = spatial
@@ -69,8 +66,7 @@ class Non_local_MH(nn.Module):
     # Outputs:
     #   Tensor of shape (N, inCh, L, W)
     def forward(self, X):
-        # Residual connection
-        res = self.resBlock(X)
+        res = X.clone()
 
         # Get the key, query, and values
         # X: (N, inCh, L, W) -> (N, inCh, L, W)
@@ -121,4 +117,4 @@ class Non_local_MH(nn.Module):
         Out = self.O_conv(Out)
         
         # Return the output with the input as a residual
-        return self.LN(Out + res)
+        return self.LN(Out) + res

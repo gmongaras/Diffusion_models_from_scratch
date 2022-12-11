@@ -1,6 +1,8 @@
 from torch import nn
 from .convNext import convNext
 from .Non_local_MH import Non_local_MH
+from .Efficient_Channel_Attention import Efficient_Channel_Attention
+from .Spatial_Channel_Attention import Spatial_Channel_Attention
 
 
 
@@ -19,14 +21,17 @@ class resBlock(nn.Module):
     #              head operates at rather than the number of heads. If
     #              this is not None, num_heads is ignored
     #   dropoutRate - Rate to apply dropout in the convnext blocks
-    def __init__(self, inCh, outCh, t_dim, num_heads=2, head_res=None, dropoutRate=0.0):
+    #   use_attn - Should attention be used or not?
+    def __init__(self, inCh, outCh, t_dim, num_heads=2, head_res=None, dropoutRate=0.0, use_attn=True):
         super(resBlock, self).__init__()
 
         self.block = nn.Sequential(
-            convNext(inCh, inCh, True, t_dim, dropoutRate),
             convNext(inCh, outCh, True, t_dim, dropoutRate),
             convNext(outCh, outCh, True, t_dim, dropoutRate),
+            # convNext(outCh, outCh, True, t_dim, dropoutRate),
+            Efficient_Channel_Attention(outCh) if use_attn else nn.Identity(),
             # Non_local_MH(outCh, num_heads, head_res, spatial=True),
+            # Spatial_Channel_Attention(outCh, num_heads, head_res)
         )
 
 
