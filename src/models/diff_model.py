@@ -307,12 +307,52 @@ class diff_model(nn.Module):
 
         # Convert the v prediction variance
         var_t = self.vs_to_variance(v_t, t)
+
+
+
+
+
+
+        # Variance for a DDPM to a DDIM
+        # Get the beta and a values for the batch of t values
+        beta_t = self.scheduler.sample_beta_t(t)
+        a_t = self.scheduler.sample_a_t(t)
+        sqrt_a_t = self.scheduler.sample_sqrt_a_t(t)
+        a_bar_t = self.scheduler.sample_a_bar_t(t)
+        sqrt_a_bar_t = self.scheduler.sample_sqrt_a_bar_t(t)
+        sqrt_1_minus_a_bar_t = self.scheduler.sample_sqrt_1_minus_a_bar_t(t)
+        a_bar_t1 = self.scheduler.sample_a_bar_t1(t)
+        sqrt_a_bar_t1 = self.scheduler.sample_sqrt_a_bar_t1(t)
+
+        # Make sure everything is in the correct shape
+        beta_t = self.unsqueeze(beta_t, -1, 3)
+        a_t = self.unsqueeze(a_t, -1, 3)
+        sqrt_a_t = self.unsqueeze(sqrt_a_t, -1, 3)
+        a_bar_t = self.unsqueeze(a_bar_t, -1, 3)
+        sqrt_a_bar_t = self.unsqueeze(sqrt_a_bar_t, -1, 3)
+        sqrt_1_minus_a_bar_t = self.unsqueeze(sqrt_1_minus_a_bar_t, -1, 3)
+        a_bar_t1 = self.unsqueeze(a_bar_t1, -1, 3)
+        sqrt_a_bar_t1 = self.unsqueeze(sqrt_a_bar_t1, -1, 3)
+
+        # var_t = 1*self.scheduler.sample_beta_tilde_t(t)
+        var_t *= 0
+        # var_t = torch.sqrt(self.scheduler.sample_beta_tilde_t(t))
+        n = torch.randn((mean_t.shape), device=self.device)
+        var_t += torch.sqrt(self.scheduler.sample_beta_tilde_t(t))
+        out = sqrt_a_bar_t1*((x_t-sqrt_1_minus_a_bar_t*noise_t)/sqrt_a_bar_t) + torch.sqrt(1-a_bar_t1-var_t**2)*noise_t + n*var_t
+
+
+
+
+
+
+
         
-        # Get the output of the predicted pixel values
-        out = torch.where(self.unsqueeze(t, -1, 3) > 1,
-            mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(var_t),
-            mean_t
-        )
+        # # Get the output of the predicted pixel values   
+        # out = torch.where(self.unsqueeze(t, -1, 3) > 1,
+        #     mean_t + n*torch.sqrt(var_t),
+        #     mean_t
+        # )
         
         # Return the images
         return out
