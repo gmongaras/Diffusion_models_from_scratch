@@ -38,15 +38,15 @@ def main():
     dropoutRate = 0.1
     use_importance = False # Should importance sampling be used to sample values of t?
 
-    training = True
+    training = False
     
     ## Saving params
     saveDir = "models/"
     numSaveEpochs = 10000
     
     ## Loading params
-    loadModel = False
-    loadDir = "models/"
+    loadModel = True
+    loadDir = "models/64 ch 64 batch/"
     loadFile = "model_600000.pkl"
     loadDefFile = "model_params_600000.json"
     
