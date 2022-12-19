@@ -179,7 +179,7 @@ class model_trainer():
         """
 
         # Get the mean and variance from the model
-        mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t, True)
+        mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t, False)
         var_t_pred = self.model.vs_to_variance(v, t)
 
 

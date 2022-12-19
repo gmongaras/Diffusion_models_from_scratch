@@ -39,6 +39,11 @@ def main():
     use_importance = False # Should importance sampling be used to sample values of t?
 
     training = False
+
+    ## Generation paramters (only in effect when  generating samples, ot during training)
+    step_size = 3                # Step size to take when generating images
+    DDIM_scale = 0.7          # Scale to transition between a DDIM, DDPM, or in between.
+                            # use 0 for pure DDIM and 1 for pure DDPM
     
     ## Saving params
     saveDir = "models/"
@@ -47,8 +52,8 @@ def main():
     ## Loading params
     loadModel = True
     loadDir = "models/64 ch 64 batch/"
-    loadFile = "model_600000.pkl"
-    loadDefFile = "model_params_600000.json"
+    loadFile = "model_200000.pkl"
+    loadDefFile = "model_params_200000.json"
     
     ## Data parameters
     reshapeType = "down" # Should the data be reshaped to the nearest power of 2 down, up, or not at all?
@@ -105,7 +110,7 @@ def main():
     
     
     ### Model Creation
-    model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched, t_dim, device, False, dropoutRate)
+    model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched, t_dim, device, False, dropoutRate, step_size, DDIM_scale)
     
     # Optional model loading
     if loadModel == True:
