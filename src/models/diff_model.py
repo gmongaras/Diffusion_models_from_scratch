@@ -334,12 +334,29 @@ class diff_model(nn.Module):
         a_bar_t1 = self.unsqueeze(a_bar_t1, -1, 3)
         sqrt_a_bar_t1 = self.unsqueeze(sqrt_a_bar_t1, -1, 3)
 
-        # var_t = 1*self.scheduler.sample_beta_tilde_t(t)
-        var_t *= 0
-        # var_t = torch.sqrt(self.scheduler.sample_beta_tilde_t(t))
-        n = torch.randn((mean_t.shape), device=self.device)
-        var_t += torch.sqrt(self.scheduler.sample_beta_tilde_t(t))
-        out = sqrt_a_bar_t1*((x_t-sqrt_1_minus_a_bar_t*noise_t)/sqrt_a_bar_t) + torch.sqrt(1-a_bar_t1-var_t**2)*noise_t + n*var_t
+        # This is what I used before
+        x_0_pred = (1/sqrt_a_bar_t)*x_t - (sqrt_1_minus_a_bar_t/sqrt_a_bar_t)*noise_t
+        tmp2 = (sqrt_a_bar_t1*beta_t)/(1-a_bar_t) * \
+                torch.clamp( x_0_pred, -1, 1 ) + \
+                (((1-a_bar_t1)*sqrt_a_t)/(1-a_bar_t))*x_t
+
+        # This is the explanation ( equivalent to what I used before )
+        x_0_pred_1 = (1/sqrt_a_bar_t)*(x_t - sqrt_1_minus_a_bar_t*noise_t)
+        x_0_pred_1 = torch.clamp(x_0_pred_1, -1, 1)
+        tmp3 = (sqrt_a_t*(1-a_bar_t1)*x_t + sqrt_a_bar_t1*(1-a_t)*x_0_pred_1)/(1-a_bar_t)
+
+
+        # This is the DDIM process. x_0 blows up if not restricted, so x_0
+        # is constrained between -1 and 1 like in the DDPM implementation.
+        scale = 0
+        # var_t = self.scheduler.sample_beta_tilde_t(t) <- What they used in their implementation
+        var_t = scale*var_t
+        x_0_pred = torch.clamp(((x_t-sqrt_1_minus_a_bar_t*noise_t)/sqrt_a_bar_t), -1, 1)
+        x_t_pred = torch.sqrt(1-a_bar_t1-var_t)*noise_t
+        random_noise = torch.randn((mean_t.shape), device=self.device)*torch.sqrt(var_t)
+        out = sqrt_a_bar_t1*x_0_pred \
+            + x_t_pred \
+            + random_noise
 
 
 
@@ -350,11 +367,15 @@ class diff_model(nn.Module):
         
         # # Get the output of the predicted pixel values   
         # out = torch.where(self.unsqueeze(t, -1, 3) > 1,
-        #     mean_t + n*torch.sqrt(var_t),
+        #     mean_t + torch.randn((mean_t.shape), device=self.device)*torch.sqrt(var_t),
         #     mean_t
         # )
+        # return out
         
         # Return the images
+        if torch.any(torch.isnan(out)):
+            print("Issue generating image.")
+            exit()
         return out
 
 
