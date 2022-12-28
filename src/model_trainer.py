@@ -62,7 +62,7 @@ class model_trainer():
             
         # Uniform distribution for values of t
         self.t_vals = np.arange(0, self.T.detach().cpu().numpy())
-        self.T_dist = torch.distributions.uniform.Uniform(float(1.0)-float(0.499), float(self.T)+float(0.499))
+        self.T_dist = torch.distributions.uniform.Uniform(float(1)-float(0.499), float(self.T-1)+float(0.499))
         
         # Optimizer
         self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr)
@@ -179,7 +179,7 @@ class model_trainer():
         """
 
         # Get the mean and variance from the model
-        mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t, False)
+        mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t, True)
         var_t_pred = self.model.vs_to_variance(v, t)
 
 

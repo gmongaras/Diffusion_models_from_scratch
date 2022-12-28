@@ -44,6 +44,9 @@ class diff_model(nn.Module):
         self.inCh = inCh
         self.step_size = step_size
         self.DDIM_scale = DDIM_scale
+
+        assert step_size > 0 and step_size <= T, "Step size must be in the range [1, T]"
+        assert DDIM_scale >= 0, "DDIM scale must be greater than or equal to 0"
         
         # Important default parameters
         self.defaults = {
@@ -214,7 +217,7 @@ class diff_model(nn.Module):
         has a very hard time learning a good representation of v.
         So, I am adding a restraint to keep it between 0 and 1.
         """
-        v = v.sigmoid()
+        # v = v.sigmoid()
         
         # Return the variance value
         return torch.exp(torch.clamp(v*torch.log(beta_t) + (1-v)*torch.log(beta_tilde_t), torch.tensor(-30, device=beta_t.device), torch.tensor(30, device=beta_t.device)))
@@ -241,6 +244,10 @@ class diff_model(nn.Module):
             else:
                 print(f"t values must either be a scalar, list of scalars, or a tensor of scalars, not type: {type(t)}")
                 return
+
+            # t is currently in DDIM state. Convert it to DDPM state
+            # which is what the model's trained on
+            t = t*self.step_size
             
             # Encode the timesteps
             if len(t.shape) == 1:
@@ -289,7 +296,6 @@ class diff_model(nn.Module):
     # Outputs:
     #   Image of shape (N, C, L, W) at timestep t-1, unnoised by one timestep
     def unnoise_batch(self, x_t, t):
-
         # Put the model in eval mode
         self.eval()
         
@@ -310,9 +316,6 @@ class diff_model(nn.Module):
         
         # Get the model predictions for the noise and v values
         noise_t, v_t = self.forward(x_t, t)
-        
-        # Convert the noise to a mean
-        mean_t = self.noise_to_mean(noise_t, x_t, t, True)
 
         # Convert the v prediction variance
         var_t = self.vs_to_variance(v_t, t)
@@ -345,21 +348,10 @@ class diff_model(nn.Module):
         sqrt_a_bar_t1 = self.unsqueeze(sqrt_a_bar_t1, -1, 3)
         beta_tilde_t = self.unsqueeze(beta_tilde_t, -1, 3)
 
-        # This is what I used before
-        x_0_pred = (1/sqrt_a_bar_t)*x_t - (sqrt_1_minus_a_bar_t/sqrt_a_bar_t)*noise_t
-        tmp2 = (sqrt_a_bar_t1*beta_t)/(1-a_bar_t) * \
-                torch.clamp( x_0_pred, -1, 1 ) + \
-                (((1-a_bar_t1)*sqrt_a_t)/(1-a_bar_t))*x_t
-
-        # This is the explanation ( equivalent to what I used before )
-        x_0_pred_1 = (1/sqrt_a_bar_t)*(x_t - sqrt_1_minus_a_bar_t*noise_t)
-        x_0_pred_1 = torch.clamp(x_0_pred_1, -1, 1)
-        tmp3 = (sqrt_a_t*(1-a_bar_t1)*x_t + sqrt_a_bar_t1*(1-a_t)*x_0_pred_1)/(1-a_bar_t)
 
 
         ### This is the DDIM process. x_0 blows up if not restricted, so x_0
-        ### is constrained between -1 and 1 like in the DDPM implementation.
-        ### var_t = self.scheduler.sample_beta_tilde_t(t) <- What they used in their implementation
+        ### is constrained between -1.5 and 1.5 similar to the DDPM implementation.
         # The variance the model predicted and the
         # variance the model did not predict
         var_t = self.DDIM_scale*var_t
@@ -371,9 +363,9 @@ class diff_model(nn.Module):
         # but if the predicted variance is used, this isn't necessarily true.
         # The predicted variance is used as in the improved DDPM paper
         x_0_pred = ((x_t-sqrt_1_minus_a_bar_t*noise_t)/sqrt_a_bar_t)
-        x_0_pred = x_0_pred.clamp(-1, 1)
-        x_t_dir_pred = torch.sqrt(1-a_bar_t1-beta_tilde_t)*noise_t
-        random_noise = torch.randn((mean_t.shape), device=self.device)*torch.sqrt(var_t)
+        x_0_pred = x_0_pred.clamp(-1.5, 1.5)
+        x_t_dir_pred = torch.sqrt(torch.clamp(1-a_bar_t1-beta_tilde_t, 0, torch.inf))*noise_t
+        random_noise = torch.randn((noise_t.shape), device=self.device)*torch.sqrt(var_t)
 
         # Get the output image for this step
         out = sqrt_a_bar_t1*x_0_pred \
@@ -386,12 +378,6 @@ class diff_model(nn.Module):
 
 
 
-        
-        # We need to clamp the output somehow to make sure it doesn't
-        # blow up sometimes. To do so, I am going to clamp between
-        # some arbitrary values sampled from a normal distribution
-        # samp = torch.randn_like(out)
-        # out = out.clamp(torch.max(samp.min(), out.min()), torch.min(samp.max(), out.max()))
         
         # Return the images
         if torch.any(torch.isnan(out)):
@@ -413,7 +399,7 @@ class diff_model(nn.Module):
         imgs = []
         for t in tqdm(range(self.T, 0, -self.step_size)) if use_tqdm else range(self.T, 0, -self.step_size):
             with torch.no_grad():
-                output = self.unnoise_batch(output, t//self.step_size)
+                output = self.unnoise_batch(output, (t//self.step_size)-1)
                 if save_intermediate:
                     imgs.append(unreduce_image(output[0]).cpu().detach().int().clamp(0, 255).permute(1, 2, 0))
         

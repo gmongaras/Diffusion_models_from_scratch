@@ -111,25 +111,21 @@ class Variance_Scheduler():
 
 
 
-class DDIM_Scheduler(Variance_Scheduler):
+class DDIM_Scheduler():
     # sched_type - Scheduler type. Can be either "cosine" or "linear"
     # T - Maximum value of t to consider. The range will be [0, T]
     # step - Step size when generating the sequence of values to
     #        skip steps in the generation process
     # device - Device to return tensors on
     def __init__(self, sched_type, T, step, device):
-        super(DDIM_Scheduler, self).__init__(sched_type, T, device)
-
-
         # Save the device
         self.device = device
 
         # Linspace for all values of t as integers
-        t_vals = torch.linspace(0, T, T+1).to(torch.int)
+        t_vals = torch.linspace(1, T, T).to(torch.int)
 
         # T value subsequence
         t_vals = t_vals[::step]
-
 
         # What scheduler should be used to add noise
         # to the data? For this scheduler, define
@@ -144,7 +140,7 @@ class DDIM_Scheduler(Variance_Scheduler):
 
             # alpha_bar_t is defined directly from the scheduler
             self.a_bar_t = f(t_vals)
-            self.a_bar_t1 = f(t_vals-step)
+            self.a_bar_t1 = f((t_vals-step).clamp(0, torch.inf))
 
             # beta_t and alpha_t are defined from a_bar_t
             self.beta_t = 1-(self.a_bar_t/self.a_bar_t1)
@@ -160,8 +156,8 @@ class DDIM_Scheduler(Variance_Scheduler):
 
             # alpha and alpha_bar_t are defined from the betas
             self.a_t = 1-self.beta_t
-            self.a_bar_t = torch.stack([torch.tensor(0.999)] + [torch.prod(self.a_t[:i]) for i in range(1, T+1)])
-            self.a_bar_t1 = torch.stack([torch.prod(self.a_t[:i]) for i in range(1, T+1)] + [torch.tensor(1e-10)])
+            self.a_bar_t = torch.stack([torch.tensor(0.999)] + [torch.prod(self.a_t[:i]) for i in range(1, (T//step)+1)])
+            self.a_bar_t1 = torch.stack([torch.prod(self.a_t[:i]) for i in range(1, (T//step)+1)] + [torch.tensor(1e-10)])
         
 
         # Roots of a and a_bar
