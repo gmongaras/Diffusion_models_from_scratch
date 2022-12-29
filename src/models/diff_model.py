@@ -357,13 +357,19 @@ class diff_model(nn.Module):
         var_t = self.DDIM_scale*var_t
         beta_tilde_t = self.DDIM_scale*beta_tilde_t
 
+        # Sometimes the noise blows up. Since the noise prediction should follow a normal
+        # distribution, sample a normal distribution of the same shape and restrict the
+        # predicted noise to the min and max of that distribution.
+        samp = torch.randn_like(noise_t)
+        noise_t = noise_t.clamp(samp.min(), samp.max())
+
         # Get the x_0 and x_t_dir predictions. Note that the
         # x_t direction prediction uses the beta_tilde_t value
         # as this value makes the process a DDPM when the scale is 1
         # but if the predicted variance is used, this isn't necessarily true.
         # The predicted variance is used as in the improved DDPM paper
         x_0_pred = ((x_t-sqrt_1_minus_a_bar_t*noise_t)/sqrt_a_bar_t)
-        x_0_pred = x_0_pred.clamp(-1.5, 1.5)
+        # x_0_pred = x_0_pred.clamp(-1.5, 1.5)
         x_t_dir_pred = torch.sqrt(torch.clamp(1-a_bar_t1-beta_tilde_t, 0, torch.inf))*noise_t
         random_noise = torch.randn((noise_t.shape), device=self.device)*torch.sqrt(var_t)
 
@@ -388,7 +394,8 @@ class diff_model(nn.Module):
 
 
     # Sample a batch of generated samples from the model
-    def sample_imgs(self, batchSize, save_intermediate=False, use_tqdm=False):
+    @torch.no_grad()
+    def sample_imgs(self, batchSize, save_intermediate=False, use_tqdm=False, unreduce=False):
         # Make sure the model is in eval mode
         self.eval()
 
@@ -398,11 +405,13 @@ class diff_model(nn.Module):
         # Iterate T//step_size times to denoise the images
         imgs = []
         for t in tqdm(range(self.T, 0, -self.step_size)) if use_tqdm else range(self.T, 0, -self.step_size):
-            with torch.no_grad():
-                output = self.unnoise_batch(output, (t//self.step_size)-1)
-                if save_intermediate:
-                    imgs.append(unreduce_image(output[0]).cpu().detach().int().clamp(0, 255).permute(1, 2, 0))
+            output = self.unnoise_batch(output, (t//self.step_size)-1)
+            if save_intermediate:
+                imgs.append(unreduce_image(output[0]).cpu().detach().int().clamp(0, 255).permute(1, 2, 0))
         
+        if unreduce:
+            output = unreduce_image(output).clamp(0, 255)
+
         # Return the output images and potential intermediate output
         return (output,imgs) if save_intermediate else output
 

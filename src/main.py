@@ -41,8 +41,8 @@ def main():
     training = False
 
     ## Generation paramters (only in effect when generating samples, not during training)
-    step_size = 1                # Step size to take when generating images
-    DDIM_scale = 1          # Scale to transition between a DDIM, DDPM, or in between.
+    step_size = 100                # Step size to take when generating images
+    DDIM_scale = 0          # Scale to transition between a DDIM, DDPM, or in between.
                             # use 0 for pure DDIM and 1 for pure DDPM
     
     ## Saving params
@@ -122,13 +122,13 @@ def main():
         trainer.train(img_data)
     
     # What does a sample image look like?
-    noise, imgs = model.sample_imgs(1, True, True)
+    noise, imgs = model.sample_imgs(1, True, True, True)
             
     # Convert the sample image to 0->255
     # and show it
     plt.close('all')
     plt.axis('off')
-    noise = torch.clamp(unreduce_image(noise).cpu().detach().int(), 0, 255)
+    noise = torch.clamp(noise.cpu().detach().int(), 0, 255)
     for img in noise:
         plt.imshow(img.permute(1, 2, 0))
         plt.savefig("fig.png", bbox_inches='tight', pad_inches=0, )
