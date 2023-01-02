@@ -47,7 +47,7 @@ def compute_model_stats():
 
 
     # Load in the model
-    model = diff_model(1, 64, 1, 1, 1, 10000, 1, 1, device, False, 0, step_size, DDIM_scale)
+    model = diff_model(1, 64, 1, 1, 10000, 1, 1, device, 0, step_size, DDIM_scale)
     model.loadModel(model_dirname, model_filename, model_params_filename)
     model.eval()
 

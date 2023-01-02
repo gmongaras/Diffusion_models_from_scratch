@@ -25,22 +25,11 @@ class U_Net(nn.Module):
     # chMult - Multiplier to scale the number of channels by
     #          for each up/down sampling block
     # t_dim - Vector size for the supplied t vector
-    # num_heads - Number of heads in each multi-head non-local block
+    # c_dim - (optional) Vector size for the supplied c vectors
     # num_res_blocks - Number of residual blocks on the up/down path
-    # useDeep - True to use deep residual blocks, False to use not deep residual blocks
     # dropoutRate - Rate to apply dropout in the model
-    def __init__(self, inCh, outCh, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep=False, dropoutRate=0.0):
+    def __init__(self, inCh, outCh, embCh, chMult, t_dim, c_dim, num_res_blocks, dropoutRate=0.0):
         super(U_Net, self).__init__()
-        
-        # What type of block should be used? deep or not deep?
-        if useDeep:
-            self.upBlock = BigGAN_ResUp_Deep
-            self.downBlock = BigGAN_ResDown_Deep
-            self.resBlock = BigGAN_Res_Deep
-        else:
-            self.upBlock = BigGAN_ResUp
-            self.downBlock = BigGAN_ResDown
-            self.resBlock = BigGAN_Res
 
         # Input convolution
         self.inConv = nn.Conv2d(inCh, embCh, 7, padding=3)
@@ -50,7 +39,7 @@ class U_Net(nn.Module):
         blocks = []
         curCh = embCh
         for i in range(1, num_res_blocks+1):
-            blocks.append(resBlock(curCh, embCh*(2**(chMult*i)), t_dim, head_res=16, dropoutRate=dropoutRate))
+            blocks.append(resBlock(curCh, embCh*(2**(chMult*i)), t_dim, c_dim, head_res=16, dropoutRate=dropoutRate))
             if i != num_res_blocks:
                 blocks.append(nn.Conv2d(embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), kernel_size=3, stride=2, padding=1))
             curCh = embCh*(2**(chMult*i))
@@ -64,10 +53,9 @@ class U_Net(nn.Module):
         # -> (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks))
         intermediateCh = curCh
         self.intermediate = nn.Sequential(
-            convNext(intermediateCh, intermediateCh, True, t_dim, dropoutRate=dropoutRate),
-            # Non_local_MH(intermediateCh, head_res=16),
+            convNext(intermediateCh, intermediateCh, t_dim, c_dim, dropoutRate=dropoutRate),
             Efficient_Channel_Attention(intermediateCh),
-            convNext(intermediateCh, intermediateCh, True, t_dim, dropoutRate=dropoutRate),
+            convNext(intermediateCh, intermediateCh, t_dim, c_dim, dropoutRate=dropoutRate),
         )
         
         
@@ -76,10 +64,10 @@ class U_Net(nn.Module):
         blocks = []
         for i in range(num_res_blocks, 0, -1):
             if i == 1:
-                blocks.append(resBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), t_dim, num_heads=1, dropoutRate=dropoutRate))
-                blocks.append(resBlock(embCh*(2**(chMult*i)), outCh, t_dim, num_heads=1, dropoutRate=dropoutRate))
+                blocks.append(resBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), t_dim, c_dim, num_heads=1, dropoutRate=dropoutRate))
+                blocks.append(resBlock(embCh*(2**(chMult*i)), outCh, t_dim, c_dim, num_heads=1, dropoutRate=dropoutRate))
             else:
-                blocks.append(resBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*(i-1))), t_dim, head_res=16, dropoutRate=dropoutRate))
+                blocks.append(resBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*(i-1))), t_dim, c_dim, head_res=16, dropoutRate=dropoutRate))
                 blocks.append(nn.ConvTranspose2d(embCh*(2**(chMult*(i-1))), embCh*(2**(chMult*(i-1))), kernel_size=4, stride=2, padding=1))
         self.upBlocks = nn.Sequential(
             *blocks
@@ -101,9 +89,12 @@ class U_Net(nn.Module):
     
     # Input:
     #   X - Tensor of shape (N, Ch, L, W)
-    #   t - (Optional) Batch of encoded t values for each 
-    #       X value of shape (N, E)
-    def forward(self, X, t=None):
+    #   t - Batch of encoded t values for each 
+    #       X value of shape (N, t_dim)
+    #   c - (optional) Batch of encoded c values for
+    #       each C value of shape (N, c_dim)
+    def forward(self, X, t, c=None):
+        # Emcode the time embeddings
         t = self.t_emb(t)
 
         # Saved residuals to add to the upsampling
@@ -116,7 +107,7 @@ class U_Net(nn.Module):
         # for residual connections
         b = 0
         while b < len(self.downBlocks):
-            X = self.downBlocks[b](X, t)
+            X = self.downBlocks[b](X, t, c)
             residuals.append(X.clone())
             b += 1
             if b < len(self.downBlocks) and type(self.downBlocks[b]) == nn.Conv2d:
@@ -139,9 +130,9 @@ class U_Net(nn.Module):
         b = 0
         while b < len(self.upBlocks):
             if len(residuals) > 0:
-                X = self.upBlocks[b](torch.cat((X, residuals[0]), dim=1), t)
+                X = self.upBlocks[b](torch.cat((X, residuals[0]), dim=1), t, c)
             else:
-                X = self.upBlocks[b](X, t)
+                X = self.upBlocks[b](X, t, c)
             b += 1
             if b < len(self.upBlocks) and type(self.upBlocks[b]) == nn.ConvTranspose2d:
                 X = self.upBlocks[b](X)

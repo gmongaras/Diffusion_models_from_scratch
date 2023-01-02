@@ -20,14 +20,14 @@ class diff_model(nn.Module):
     # embCh - Number of channels to embed the batch to
     # chMult - Multiplier to scale the number of channels by
     #          for each up/down sampling block
-    # num_heads - Number of heads in each multi-head non-local block
     # num_res_blocks - Number of residual blocks on the up/down path
     # T - Max number of diffusion steps
     # beta_sched - Scheduler for the beta noise term (linear or cosine)
     # useDeep - True to use deep residual blocks, False to use not deep residual blocks
-    # t_dim - Embedding dimenion for the timesteps
+    # t_dim - Embedding dimension for the timesteps
     # device - Device to put the model on (gpu or cpu)
-    # useDeep - Use a deep version of the model or a shallow version
+    # c_dim - Embedding dimension for the class embeddings (None to not use class embeddings)
+    # num_classes - Number of possible classes the network will work with
     # dropoutRate - Rate to apply dropout to the U-net model
     # step_size - Step size to take when generating images. This is 1 for
     #        normal generation, but a greater integer for faster generation.
@@ -35,8 +35,9 @@ class diff_model(nn.Module):
     # DDIM_scale - Scale to transition between a DDIM, DDPM, or in between.
     #              use 0 for pure DDIM and 1 for pure DDPM.
     #              Note: This is not used for training
-    def __init__(self, inCh, embCh, chMult, num_heads, num_res_blocks,
-                 T, beta_sched, t_dim, device, useDeep=False, dropoutRate=0.0, 
+    def __init__(self, inCh, embCh, chMult, num_res_blocks,
+                 T, beta_sched, t_dim, device, c_dim=None, 
+                 num_classes=None, dropoutRate=0.0, 
                  step_size=1, DDIM_scale=0.5):
         super(diff_model, self).__init__()
         
@@ -44,21 +45,24 @@ class diff_model(nn.Module):
         self.inCh = inCh
         self.step_size = step_size
         self.DDIM_scale = DDIM_scale
+        self.num_classes = num_classes
 
         assert step_size > 0 and step_size <= T, "Step size must be in the range [1, T]"
         assert DDIM_scale >= 0, "DDIM scale must be greater than or equal to 0"
+        assert (c_dim==None and num_classes==None) or (c_dim!=None and num_classes!=None), \
+            "c_dim and num_classes must both be specified for class information to be used"
         
         # Important default parameters
         self.defaults = {
             "inCh": inCh,
             "embCh": embCh,
             "chMult": chMult,
-            "num_heads": num_heads,
             "num_res_blocks": num_res_blocks,
             "T": T,
             "beta_sched": beta_sched,
             "t_dim": t_dim,
-            "useDeep": useDeep
+            "c_dim": c_dim,
+            "num_classes": num_classes
         }
         
         # Convert the device to a torch device
@@ -80,13 +84,19 @@ class diff_model(nn.Module):
         self.T = torch.tensor(T, device=device)
         
         # U_net model
-        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep, dropoutRate).to(device)
+        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, c_dim, num_res_blocks, dropoutRate).to(device)
         
         # DDIM Variance scheduler for values of beta and alpha
         self.scheduler = DDIM_Scheduler(beta_sched, T, self.step_size, self.device)
             
         # Used to embed the values of t so the model can use it
         self.t_emb = PositionalEncoding(t_dim).to(device)
+
+        # Used to embed the values of c so the model can use it
+        if c_dim != None:
+            self.c_emb = nn.Linear(self.num_classes, c_dim, bias=False),
+        else:
+            self.c_emb = None
 
         # Output convolutions for the mean and variance
         # self.out_mean = nn.Conv2d(inCh, inCh, 3, padding=1, groups=inCh)
@@ -123,23 +133,6 @@ class diff_model(nn.Module):
         
         # Noise the images
         return sqrt_a_bar_t*X + sqrt_1_minus_a_bar_t*epsilon, epsilon
-    
-    
-    
-    # Get the noise for a batch of images
-    # Inputs:
-    #   noise_shape - Shape of desired tensor of noise
-    #   t - Batch of t values of shape (N)
-    # Outputs:
-    #   epsilon - Batch of noised images of the given shape
-    def sample_noise(self, noise_shape, t):
-        # Make sure t isn't too large
-        t = torch.min(t, self.T)
-        
-        # Sample gaussian noise
-        epsilon = torch.randn(noise_shape, device=self.device)
-        
-        return epsilon
 
 
 
@@ -208,16 +201,6 @@ class diff_model(nn.Module):
         # Get the scheduler information
         beta_t = self.unsqueeze(self.scheduler.sample_beta_t(t), -1, 3)
         beta_tilde_t = self.unsqueeze(self.scheduler.sample_beta_tilde_t(t), -1, 3)
-
-        """
-        Note: The authors claim that v stayed in the range of values
-        it should without any type of restraint. I found that this was
-        the case at later stages of t, but at early stages of t (from about t = 20 to t = 0),
-        the value of v blew up. For some reason, when t is small, the model
-        has a very hard time learning a good representation of v.
-        So, I am adding a restraint to keep it between 0 and 1.
-        """
-        # v = v.sigmoid()
         
         # Return the variance value
         return torch.exp(torch.clamp(v*torch.log(beta_t) + (1-v)*torch.log(beta_tilde_t), torch.tensor(-30, device=beta_t.device), torch.tensor(30, device=beta_t.device)))
@@ -226,12 +209,13 @@ class diff_model(nn.Module):
         
     # Input:
     #   x_t - Batch of images of shape (B, C, L, W)
-    #   t - (Optional) Batch of t values of shape (N) or a single t value
+    #   t - Batch of t values of shape (N) or a single t value
+    #   c - (Optional) Batch of c values of shape (N)
     # Outputs:
     #   noise - Batch of noise predictions of shape (B, C, L, W)
     #   v - Batch of v predictions of shape (B, C, L, W)
-    def forward(self, x_t, t):
-        
+    def forward(self, x_t, t, c=None):
+
         # Make sure t is in the correct form
         if t != None:
             if type(t) == int or type(t) == float:
@@ -249,9 +233,15 @@ class diff_model(nn.Module):
             if len(t.shape) == 1:
                 t = self.t_emb(t)
         
+
+        # One hot encode the class embeddings
+        if self.num_classes != None:
+            c = torch.nn.functional.one_hot(c, self.num_classes).to(self.device).to(torch.float)
+
+        
         # Send the input through the U-net to get
         # the model output
-        out = self.unet(x_t, t)
+        out = self.unet(x_t, t, c)
 
         # Get the noise and v predictions
         # for the image x_t-1
@@ -454,7 +444,7 @@ class diff_model(nn.Module):
             D = self.defaults
 
             # Reinitialize the model with the new defaults
-            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_heads"], D["num_res_blocks"], D["T"], D["beta_sched"], D["t_dim"], self.dev, bool(D["useDeep"]), step_size=self.step_size, DDIM_scale=self.DDIM_scale)
+            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_res_blocks"], D["T"], D["beta_sched"], D["t_dim"], self.dev, D["c_dim"], D["num_classes"], step_size=self.step_size, DDIM_scale=self.DDIM_scale)
 
             # Load the model state
             self.load_state_dict(torch.load(loadDir + os.sep + loadFile, map_location=self.device))

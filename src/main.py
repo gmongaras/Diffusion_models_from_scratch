@@ -19,12 +19,11 @@ def main():
     inCh = 3
     embCh = 128
     chMult = 1
-    num_heads = 8
     num_res_blocks = 4
     T = 4000
     Lambda = 0.001
     beta_sched = "cosine"
-    batchSize = 125
+    batchSize = 100
     numSteps = 3            # Number of steps to breakup the batchSize into. Instead
                             # of taking 1 massive step where the whole batch is loaded into
                             # memory, the batchSize is broken up into sizes of
@@ -35,6 +34,7 @@ def main():
     epochs = 1000000
     lr = 0.0001
     t_dim = 512
+    c_dim = None            # Embedding dimension for class info (use None to not use class info)
     dropoutRate = 0.1
     use_importance = False # Should importance sampling be used to sample values of t?
 
@@ -77,18 +77,19 @@ def main():
             data.append(file["data"])
             labels.append(file["labels"])
             del file
-        for filename in archive2.filelist:
-            file = pickle.load(archive2.open(filename.filename, "r"))
-            data.append(file["data"])
-            labels.append(file["labels"])
-            del file
+            break
+        # for filename in archive2.filelist:
+        #     file = pickle.load(archive2.open(filename.filename, "r"))
+        #     data.append(file["data"])
+        #     labels.append(file["labels"])
+        #     del file
         
         # Load the data
         archive1.close()
         archive2.close()
         img_data = np.concatenate((data), axis=0)
+        labels = np.concatenate((labels), axis=0)
         del data
-        del labels
 
         # Convert the data to a tensor
         img_data = torch.tensor(img_data, dtype=torch.float32, device=torch.device("cpu"))
@@ -105,12 +106,19 @@ def main():
         if next_power_of_2 != img_data.shape[-1]:
             img_data = torch.nn.functional.interpolate(img_data, (next_power_of_2, next_power_of_2))
     
+    # How many classes are there?
+    num_classes = None
+    if c_dim != None:
+        num_classes = labels.max()
+        if labels.min() == 1:
+            num_classes+=1
+    
     
     
     
     
     ### Model Creation
-    model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched, t_dim, device, False, dropoutRate, step_size if not training else 1, DDIM_scale)
+    model = diff_model(inCh, embCh, chMult, num_res_blocks, T, beta_sched, t_dim, device, c_dim, num_classes, dropoutRate, step_size if not training else 1, DDIM_scale)
     
     # Optional model loading
     if loadModel == True:
