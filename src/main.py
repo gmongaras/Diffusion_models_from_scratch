@@ -24,7 +24,7 @@ def main():
     T = 4000
     Lambda = 0.001
     beta_sched = "cosine"
-    batchSize = 135
+    batchSize = 125
     numSteps = 3            # Number of steps to breakup the batchSize into. Instead
                             # of taking 1 massive step where the whole batch is loaded into
                             # memory, the batchSize is broken up into sizes of
@@ -33,12 +33,12 @@ def main():
                             # the update is distributed across smaller updates to fit into memory
     device = "gpu"
     epochs = 1000000
-    lr = 0.0003
-    t_dim = 256
+    lr = 0.0001
+    t_dim = 512
     dropoutRate = 0.1
     use_importance = False # Should importance sampling be used to sample values of t?
 
-    training = False
+    training = True
 
     ## Generation paramters (only in effect when generating samples, not during training)
     step_size = 100                # Step size to take when generating images
@@ -50,9 +50,9 @@ def main():
     numSaveEpochs = 10000
     
     ## Loading params
-    loadModel = True
+    loadModel = False
     loadDir = "models/"
-    loadFile = "model_190000.pkl"
+    loadFile = "model_10000.pkl"
     loadDefFile = "model_params_10000.json"
     
     ## Data parameters

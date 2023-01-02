@@ -244,10 +244,6 @@ class diff_model(nn.Module):
             else:
                 print(f"t values must either be a scalar, list of scalars, or a tensor of scalars, not type: {type(t)}")
                 return
-
-            # t is currently in DDIM state. Convert it to DDPM state
-            # which is what the model's trained on
-            t = t*self.step_size
             
             # Encode the timesteps
             if len(t.shape) == 1:
@@ -313,9 +309,14 @@ class diff_model(nn.Module):
         
         x_t = x_t.to(self.device)
         t = t.to(self.device)
+
+        # t is currently in DDIM state. Convert it to DDPM state
+        # which is what the model's trained on to get the
+        # correct noise and v prediction.
+        t_enc = t*self.step_size + 1
         
         # Get the model predictions for the noise and v values
-        noise_t, v_t = self.forward(x_t, t)
+        noise_t, v_t = self.forward(x_t, t_enc)
 
         # Convert the v prediction variance
         var_t = self.vs_to_variance(v_t, t)

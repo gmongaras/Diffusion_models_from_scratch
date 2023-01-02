@@ -26,8 +26,8 @@ class resBlock(nn.Module):
         super(resBlock, self).__init__()
 
         self.block = nn.Sequential(
+            convNext(inCh, inCh, True, t_dim, dropoutRate),
             convNext(inCh, outCh, True, t_dim, dropoutRate),
-            convNext(outCh, outCh, True, t_dim, dropoutRate),
             # convNext(outCh, outCh, True, t_dim, dropoutRate),
             Efficient_Channel_Attention(outCh) if use_attn else nn.Identity(),
             # Non_local_MH(outCh, num_heads, head_res, spatial=True),

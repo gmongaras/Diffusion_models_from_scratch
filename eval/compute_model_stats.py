@@ -34,11 +34,11 @@ def compute_model_stats():
     batchSize = 190
 
     step_size = 100
-    DDIM_scale = 1
+    DDIM_scale = 0
 
     # Filenames
-    mean_filename = "fake_mean_100step_1DDIM.npy"
-    var_filename = "fake_var_100step_1DDIM.npy"
+    mean_filename = "fake_mean_190K.npy"
+    var_filename = "fake_var_190K.npy"
 
 
 

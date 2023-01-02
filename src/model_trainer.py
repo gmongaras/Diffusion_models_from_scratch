@@ -65,7 +65,7 @@ class model_trainer():
         self.T_dist = torch.distributions.uniform.Uniform(float(1)-float(0.499), float(self.T-1)+float(0.499))
         
         # Optimizer
-        self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr)
+        self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr, eps=1e-4)
         
         # Loss function
         self.MSE = nn.MSELoss(reduction="none").to(self.device)
