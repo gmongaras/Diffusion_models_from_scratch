@@ -24,7 +24,7 @@ def main():
     T = 4000
     Lambda = 0.001
     beta_sched = "cosine"
-    batchSize = 129
+    batchSize = 125
     numSteps = 3            # Number of steps to breakup the batchSize into. Instead
                             # of taking 1 massive step where the whole batch is loaded into
                             # memory, the batchSize is broken up into sizes of
@@ -33,12 +33,17 @@ def main():
                             # the update is distributed across smaller updates to fit into memory
     device = "gpu"
     epochs = 1000000
-    lr = 0.0002
-    t_dim = 256
+    lr = 0.0001
+    t_dim = 512
     dropoutRate = 0.1
     use_importance = False # Should importance sampling be used to sample values of t?
 
     training = True
+
+    ## Generation paramters (only in effect when generating samples, not during training)
+    step_size = 100                # Step size to take when generating images
+    DDIM_scale = 0          # Scale to transition between a DDIM, DDPM, or in between.
+                            # use 0 for pure DDIM and 1 for pure DDPM
     
     ## Saving params
     saveDir = "models/"
@@ -47,8 +52,8 @@ def main():
     ## Loading params
     loadModel = False
     loadDir = "models/"
-    loadFile = "model_600000.pkl"
-    loadDefFile = "model_params_600000.json"
+    loadFile = "model_10000.pkl"
+    loadDefFile = "model_params_10000.json"
     
     ## Data parameters
     reshapeType = "down" # Should the data be reshaped to the nearest power of 2 down, up, or not at all?
@@ -105,7 +110,7 @@ def main():
     
     
     ### Model Creation
-    model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched, t_dim, device, False, dropoutRate)
+    model = diff_model(inCh, embCh, chMult, num_heads, num_res_blocks, T, beta_sched, t_dim, device, False, dropoutRate, step_size if not training else 1, DDIM_scale)
     
     # Optional model loading
     if loadModel == True:
@@ -117,13 +122,13 @@ def main():
         trainer.train(img_data)
     
     # What does a sample image look like?
-    noise, imgs = model.sample_imgs(1, True, True)
+    noise, imgs = model.sample_imgs(1, True, True, True)
             
     # Convert the sample image to 0->255
     # and show it
     plt.close('all')
     plt.axis('off')
-    noise = torch.clamp(unreduce_image(noise).cpu().detach().int(), 0, 255)
+    noise = torch.clamp(noise.cpu().detach().int(), 0, 255)
     for img in noise:
         plt.imshow(img.permute(1, 2, 0))
         plt.savefig("fig.png", bbox_inches='tight', pad_inches=0, )

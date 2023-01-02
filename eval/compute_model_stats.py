@@ -25,13 +25,21 @@ def compute_model_stats():
 
     # Parameters
     model_dirname = "models"
-    model_filename = "model_200000.pkl"
-    model_params_filename = "model_params_200000.json"
+    model_filename = "model_190000.pkl"
+    model_params_filename = "model_params_190000.json"
 
     device = "gpu"
 
-    num_fake_imgs = 1000
-    batchSize = 350
+    num_fake_imgs = 10000
+    batchSize = 190
+
+    step_size = 100
+    DDIM_scale = 0
+
+    # Filenames
+    mean_filename = "fake_mean_190K.npy"
+    var_filename = "fake_var_190K.npy"
+
 
 
 
@@ -39,7 +47,7 @@ def compute_model_stats():
 
 
     # Load in the model
-    model = diff_model(1, 64, 1, 1, 1, 1, 1, 1, device, False, 0)
+    model = diff_model(1, 64, 1, 1, 1, 10000, 1, 1, device, False, 0, step_size, DDIM_scale)
     model.loadModel(model_dirname, model_filename, model_params_filename)
     model.eval()
 
@@ -64,17 +72,16 @@ def compute_model_stats():
             cur_batch_size = min(num_fake_imgs, batchSize*(i+1))-batchSize*i
 
             # Generate some images
-            imgs = model.sample_imgs(cur_batch_size, use_tqdm=True)
+            imgs = model.sample_imgs(cur_batch_size, use_tqdm=True, unreduce=True)
 
             # Resize the images to be of shape (3, 299, 299)
-            imgs = transforms.Compose([transforms.Resize((299,299))])(imgs.to(torch.int8))
+            imgs = transforms.Compose([transforms.Resize((299,299))])(imgs.to(torch.uint8))
 
             # Calculate the inception scores and store them
             if type(scores) == type(None):
                 scores = inceptionV3(imgs).to(cpu).numpy().astype(np.float16)
             else:
                 scores = np.concatenate((scores, inceptionV3(imgs).to(cpu).numpy().astype(np.float16)), axis=0)
-            
 
             print(f"Num loaded: {min(num_fake_imgs, batchSize*(i+1))}")
     
@@ -88,8 +95,8 @@ def compute_model_stats():
 
 
     # Save the mean and variance
-    np.save("eval/saved_stats/fake_mean_200k.npy", mean)
-    np.save("eval/saved_stats/fake_var_200k.npy", var)
+    np.save(f"eval/saved_stats/{mean_filename}", mean)
+    np.save(f"eval/saved_stats/{var_filename}", var)
 
 
 

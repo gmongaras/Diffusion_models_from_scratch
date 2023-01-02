@@ -56,7 +56,7 @@ def compute_imagenet_stats():
     np.random.shuffle(img_data)
 
     # Convert the data to a tensor
-    img_data = torch.tensor(img_data, dtype=torch.int8, device=torch.device("cpu"))
+    img_data = torch.tensor(img_data, dtype=torch.uint8, device=torch.device("cpu"))
     img_data = img_data.reshape(img_data.shape[0], 3, 64, 64)
 
     # Get a subset of the data
@@ -95,7 +95,7 @@ def compute_imagenet_stats():
             imgs = img_data[batchSize*i:cur_batch_size+(batchSize*i)]
 
             # Resize the images to be of shape (3, 299, 299)
-            imgs = transforms.Compose([transforms.Resize((299,299))])(imgs.to(torch.int8))
+            imgs = transforms.Compose([transforms.Resize((299,299))])(imgs.to(torch.uint8))
 
             # Calculate the inception scores and store them
             if type(scores) == type(None):

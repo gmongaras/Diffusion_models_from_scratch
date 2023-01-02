@@ -13,9 +13,9 @@ def compute_FID():
 
     # Mean and variance files
     mean_file1 = "eval/saved_stats/real_mean.npy"
-    mean_file2 = "eval/saved_stats/fake_mean_600k.npy"
+    mean_file2 = "eval/saved_stats/fake_mean_10K.npy"
     var_file1 = "eval/saved_stats/real_var.npy"
-    var_file2 = "eval/saved_stats/fake_var_600k.npy"
+    var_file2 = "eval/saved_stats/fake_var_10K.npy"
 
 
     # Load in the mean and variances
