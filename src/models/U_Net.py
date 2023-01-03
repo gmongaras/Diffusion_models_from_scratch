@@ -25,10 +25,10 @@ class U_Net(nn.Module):
     # chMult - Multiplier to scale the number of channels by
     #          for each up/down sampling block
     # t_dim - Vector size for the supplied t vector
-    # c_dim - (optional) Vector size for the supplied c vectors
     # num_res_blocks - Number of residual blocks on the up/down path
+    # c_dim - (optional) Vector size for the supplied c vectors
     # dropoutRate - Rate to apply dropout in the model
-    def __init__(self, inCh, outCh, embCh, chMult, t_dim, c_dim, num_res_blocks, dropoutRate=0.0):
+    def __init__(self, inCh, outCh, embCh, chMult, t_dim, num_res_blocks, c_dim=None, dropoutRate=0.0):
         super(U_Net, self).__init__()
 
         # Input convolution
@@ -39,7 +39,7 @@ class U_Net(nn.Module):
         blocks = []
         curCh = embCh
         for i in range(1, num_res_blocks+1):
-            blocks.append(resBlock(curCh, embCh*(2**(chMult*i)), t_dim, c_dim, head_res=16, dropoutRate=dropoutRate))
+            blocks.append(resBlock(curCh, embCh*(2**(chMult*i)), t_dim, head_res=16, dropoutRate=dropoutRate))
             if i != num_res_blocks:
                 blocks.append(nn.Conv2d(embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), kernel_size=3, stride=2, padding=1))
             curCh = embCh*(2**(chMult*i))
@@ -53,9 +53,9 @@ class U_Net(nn.Module):
         # -> (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks))
         intermediateCh = curCh
         self.intermediate = nn.Sequential(
-            convNext(intermediateCh, intermediateCh, t_dim, c_dim, dropoutRate=dropoutRate),
+            convNext(intermediateCh, intermediateCh, t_dim, dropoutRate=dropoutRate),
             Efficient_Channel_Attention(intermediateCh),
-            convNext(intermediateCh, intermediateCh, t_dim, c_dim, dropoutRate=dropoutRate),
+            convNext(intermediateCh, intermediateCh, t_dim, dropoutRate=dropoutRate),
         )
         
         
@@ -64,10 +64,10 @@ class U_Net(nn.Module):
         blocks = []
         for i in range(num_res_blocks, 0, -1):
             if i == 1:
-                blocks.append(resBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), t_dim, c_dim, num_heads=1, dropoutRate=dropoutRate))
-                blocks.append(resBlock(embCh*(2**(chMult*i)), outCh, t_dim, c_dim, num_heads=1, dropoutRate=dropoutRate))
+                blocks.append(resBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), t_dim, num_heads=1, dropoutRate=dropoutRate))
+                blocks.append(resBlock(embCh*(2**(chMult*i)), outCh, t_dim, num_heads=1, dropoutRate=dropoutRate))
             else:
-                blocks.append(resBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*(i-1))), t_dim, c_dim, head_res=16, dropoutRate=dropoutRate))
+                blocks.append(resBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*(i-1))), t_dim, head_res=16, dropoutRate=dropoutRate))
                 blocks.append(nn.ConvTranspose2d(embCh*(2**(chMult*(i-1))), embCh*(2**(chMult*(i-1))), kernel_size=4, stride=2, padding=1))
         self.upBlocks = nn.Sequential(
             *blocks
@@ -80,11 +80,22 @@ class U_Net(nn.Module):
         self.downSamp = nn.AvgPool2d(2) 
         self.upSamp = nn.Upsample(scale_factor=2)
 
+        # Time embeddings
         self.t_emb = nn.Sequential(
                 nn.Linear(t_dim, t_dim),
                 nn.GELU(),
                 nn.Linear(t_dim, t_dim),
             )
+
+        # Class embeddings
+        if type(c_dim) != type(None):
+            self.c_emb = nn.Sequential(
+                    nn.Linear(c_dim, c_dim),
+                    nn.GELU(),
+                    nn.Linear(c_dim, c_dim),
+                )
+        else:
+            self.c_emb = None
     
     
     # Input:
@@ -94,8 +105,14 @@ class U_Net(nn.Module):
     #   c - (optional) Batch of encoded c values for
     #       each C value of shape (N, c_dim)
     def forward(self, X, t, c=None):
-        # Emcode the time embeddings
+        # Class embedding assertion
+        if type(c) != type(None):
+            assert type(self.c_emb) != type(None), "c_emb must be specified when using class information."
+
+        # Encode the time embeddings and class embeddings
         t = self.t_emb(t)
+        if c != None:
+            t = t + self.c_emb(c)
 
         # Saved residuals to add to the upsampling
         residuals = []
@@ -107,7 +124,7 @@ class U_Net(nn.Module):
         # for residual connections
         b = 0
         while b < len(self.downBlocks):
-            X = self.downBlocks[b](X, t, c)
+            X = self.downBlocks[b](X, t)
             residuals.append(X.clone())
             b += 1
             if b < len(self.downBlocks) and type(self.downBlocks[b]) == nn.Conv2d:
@@ -130,9 +147,9 @@ class U_Net(nn.Module):
         b = 0
         while b < len(self.upBlocks):
             if len(residuals) > 0:
-                X = self.upBlocks[b](torch.cat((X, residuals[0]), dim=1), t, c)
+                X = self.upBlocks[b](torch.cat((X, residuals[0]), dim=1), t)
             else:
-                X = self.upBlocks[b](X, t, c)
+                X = self.upBlocks[b](X, t)
             b += 1
             if b < len(self.upBlocks) and type(self.upBlocks[b]) == nn.ConvTranspose2d:
                 X = self.upBlocks[b](X)

@@ -18,9 +18,8 @@ class convNext(nn.Sequential):
     #   inCh - Number of channels the input batch has
     #   outCh - Number of chanels the ouput batch should have
     #   t_dim - (optional) Number of dimensions in the time input embedding
-    #   c_dim - (optional) Number of dimensions in the class input embedding
     #   dropoutRate - Rate to apply dropout to each layer in the block
-    def __init__(self, inCh, outCh, t_dim=None, c_dim=None, dropoutRate=0.0):
+    def __init__(self, inCh, outCh, t_dim=None, dropoutRate=0.0):
         super(convNext, self).__init__()
 
         # Implementation found at https://arxiv.org/pdf/2201.03545.pdf
@@ -50,26 +49,16 @@ class convNext(nn.Sequential):
         else:
             self.timeProj = None
 
-
-        # Optional class vector applied over the channels
-        if c_dim != None:
-            self.clsProj = nn.Linear(c_dim, inCh)
-        else:
-            self.clsProj = None
-
     
     # Input:
     #   X - Tensor of shape (N, inCh, L, W)
     #   t - (optional) vector of shape (N, t_dim)
-    #   c - (optional) vector of shape (N, c_dim)
     # Output:
     #   Tensor of shape (N, outCh, L, W)
-    def forward(self, X, t=None, c=None):
+    def forward(self, X, t=None):
         # Quick t and c check
         if t != None and self.timeProj == None:
             raise RuntimeError("t_dim cannot be None when using time embeddings")
-        if c != None and self.clsProj == None:
-            raise RuntimeError("c_dim cannot be None when using class embeddings")
 
         # Residual connection
         res = self.res(X)
@@ -78,11 +67,18 @@ class convNext(nn.Sequential):
         if t == None:
             X = self.block(X)
         else:
+            # Initial convolution and dropout
             X = self.block[0](X)
             X = self.block[1](X)
             X = self.block[2](X)
+
+            # Time embedding
             t = self.timeProj(t).unsqueeze(-1).unsqueeze(-1)
+
+            # Combine the class, time, and embedding information
             X = X + t
+
+            # Output linear projection
             for b in self.block[3:]:
                 X = b(X)
 

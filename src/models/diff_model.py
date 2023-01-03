@@ -84,7 +84,7 @@ class diff_model(nn.Module):
         self.T = torch.tensor(T, device=device)
         
         # U_net model
-        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, c_dim, num_res_blocks, dropoutRate).to(device)
+        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_res_blocks, c_dim, dropoutRate).to(device)
         
         # DDIM Variance scheduler for values of beta and alpha
         self.scheduler = DDIM_Scheduler(beta_sched, T, self.step_size, self.device)
@@ -94,7 +94,7 @@ class diff_model(nn.Module):
 
         # Used to embed the values of c so the model can use it
         if c_dim != None:
-            self.c_emb = nn.Linear(self.num_classes, c_dim, bias=False),
+            self.c_emb = nn.Linear(self.num_classes, c_dim, bias=False)
         else:
             self.c_emb = None
 
@@ -236,8 +236,12 @@ class diff_model(nn.Module):
 
         # One hot encode the class embeddings
         if self.num_classes != None:
-            c = torch.nn.functional.one_hot(c, self.num_classes).to(self.device).to(torch.float)
+            c = torch.nn.functional.one_hot(c.to(torch.int64), self.num_classes).to(self.device).to(torch.float)
 
+
+        # Embed the class info
+        if type(c) != type(None):
+            c = self.c_emb(c)
         
         # Send the input through the U-net to get
         # the model output

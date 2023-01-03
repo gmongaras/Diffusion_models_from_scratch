@@ -32,9 +32,9 @@ def main():
                             # the update is distributed across smaller updates to fit into memory
     device = "gpu"
     epochs = 1000000
-    lr = 0.0001
+    lr = 0.0002
     t_dim = 512
-    c_dim = None            # Embedding dimension for class info (use None to not use class info)
+    c_dim = 512            # Embedding dimension for class info (use None to not use class info)
     dropoutRate = 0.1
     use_importance = False # Should importance sampling be used to sample values of t?
 
@@ -127,7 +127,7 @@ def main():
     # Train the model
     if training:
         trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance)
-        trainer.train(img_data)
+        trainer.train(img_data, labels if c_dim != None else None)
     
     # What does a sample image look like?
     noise, imgs = model.sample_imgs(1, True, True, True)

@@ -244,12 +244,24 @@ class model_trainer():
     #   classes - (optional) A batch of classes of shape (N)
     def train(self, X, classes=None):
 
+        # Was class information given?
+        if type(classes) == type(None):
+            useCls = False
+        else:
+            useCls = True
+
+        # Make sure the data are tensors
+        if not isinstance(torch.tensor([1]), type(X)):
+            X = torch.tensor(X, device=cpu)
+        if useCls and not isinstance(torch.tensor([1]), type(classes)):
+            classes = torch.tensor(classes, device=cpu)
+
         # Put the model is train mode
         self.model.train()
         
         # Put the data on the cpu
         X = X.to(cpu)
-        if classes != None:
+        if useCls:
             classes = classes.to(cpu)
         
         # Should the images be scaled?
@@ -279,7 +291,7 @@ class model_trainer():
                 # it on the correct device
                 samp = torch.randperm(X.shape[0])[:self.batchSize]
                 batch_x_0 = X[samp].to(self.device)
-                if classes != None:
+                if useCls:
                     batch_class = classes[samp].to(torch.int)
 
                 # Scale the images
@@ -310,7 +322,7 @@ class model_trainer():
                 # Send the noised data through the model to get the
                 # predicted noise and variance for batch at t-1
                 epsilon_t1_pred, v_t1_pred = self.model(batch_x_t, t_vals, 
-                    batch_class if classes != None else None)
+                    batch_class if useCls else None)
                 
                 # Get the loss
                 loss, loss_mean, loss_var = self.lossFunct(epsilon_t, epsilon_t1_pred, v_t1_pred, 
