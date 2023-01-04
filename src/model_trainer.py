@@ -30,7 +30,8 @@ class model_trainer():
     # numSaveEpochs - Number of epochs until saving the models
     # use_importance - True to use importance sampling to sample values of t,
     #                  False to use uniform sampling.
-    def __init__(self, diff_model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance):
+    # p_uncond - Probability of training on a null class (only used if class info is used)
+    def __init__(self, diff_model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance, p_uncond=None):
         # Saved info
         self.T = diff_model.T
         self.model = diff_model
@@ -41,6 +42,7 @@ class model_trainer():
         self.saveDir = saveDir
         self.numSaveEpochs = numSaveEpochs
         self.use_importance = use_importance
+        self.p_uncond = p_uncond
         
         # Convert the device to a torch device
         if device.lower() == "gpu":
@@ -250,6 +252,9 @@ class model_trainer():
         else:
             useCls = True
 
+            # Class assertion
+            assert self.p_uncond != None, "p_uncond cannot be None when using class information"
+
         # Make sure the data are tensors
         if not isinstance(torch.tensor([1]), type(X)):
             X = torch.tensor(X, device=cpu)
@@ -307,12 +312,21 @@ class model_trainer():
 
                     # Sample the values of t
                     t_vals = torch.tensor(np.random.choice(self.t_vals, size=self.batchSize, p=p_t), device=batch_x_0.device)
-                # Sample uniformly until we get to that point or if importantce
+                # Sample uniformly until we get to that point or if importance
                 # sampling is not used
                 else:
                     t_vals = self.T_dist.sample((self.batchSize,)).to(self.device)
                     t_vals = torch.round(t_vals).to(torch.long)
+
+
+                # Probability of class embeddings being the null embedding
+                if self.p_uncond != None:
+                    probs = torch.rand(self.batchSize)
+                    nullCls = torch.where(probs < self.p_uncond, 1, 0).to(torch.bool).to(self.device)
+                else:
+                    nullCls = None
                 
+
                 # Noise the batch to time t-1
                 batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)
                 
@@ -322,7 +336,7 @@ class model_trainer():
                 # Send the noised data through the model to get the
                 # predicted noise and variance for batch at t-1
                 epsilon_t1_pred, v_t1_pred = self.model(batch_x_t, t_vals, 
-                    batch_class if useCls else None)
+                    batch_class if useCls else None, nullCls)
                 
                 # Get the loss
                 loss, loss_mean, loss_var = self.lossFunct(epsilon_t, epsilon_t1_pred, v_t1_pred, 

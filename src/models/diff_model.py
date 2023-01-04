@@ -49,7 +49,8 @@ class diff_model(nn.Module):
 
         assert step_size > 0 and step_size <= T, "Step size must be in the range [1, T]"
         assert DDIM_scale >= 0, "DDIM scale must be greater than or equal to 0"
-        assert (c_dim==None and num_classes==None) or (c_dim!=None and num_classes!=None), \
+        assert (c_dim==None and num_classes==None) or \
+            (c_dim!=None and num_classes!=None), \
             "c_dim and num_classes must both be specified for class information to be used"
         
         # Important default parameters
@@ -211,10 +212,11 @@ class diff_model(nn.Module):
     #   x_t - Batch of images of shape (B, C, L, W)
     #   t - Batch of t values of shape (N) or a single t value
     #   c - (Optional) Batch of c values of shape (N)
+    #   nullCls - (Optional) Binary tensor of shape (N) where a 1 represents a null class
     # Outputs:
     #   noise - Batch of noise predictions of shape (B, C, L, W)
     #   v - Batch of v predictions of shape (B, C, L, W)
-    def forward(self, x_t, t, c=None):
+    def forward(self, x_t, t, c=None, nullCls=None):
 
         # Make sure t is in the correct form
         if t != None:
@@ -242,6 +244,10 @@ class diff_model(nn.Module):
         # Embed the class info
         if type(c) != type(None):
             c = self.c_emb(c)
+
+            # Apply the null embeddings (zeros)
+            if type(nullCls) != type(None):
+                c[nullCls == 1] *= 0
         
         # Send the input through the U-net to get
         # the model output
@@ -364,7 +370,6 @@ class diff_model(nn.Module):
         # but if the predicted variance is used, this isn't necessarily true.
         # The predicted variance is used as in the improved DDPM paper
         x_0_pred = ((x_t-sqrt_1_minus_a_bar_t*noise_t)/sqrt_a_bar_t)
-        # x_0_pred = x_0_pred.clamp(-1.5, 1.5)
         x_t_dir_pred = torch.sqrt(torch.clamp(1-a_bar_t1-beta_tilde_t, 0, torch.inf))*noise_t
         random_noise = torch.randn((noise_t.shape), device=self.device)*torch.sqrt(var_t)
 
@@ -448,7 +453,7 @@ class diff_model(nn.Module):
             D = self.defaults
 
             # Reinitialize the model with the new defaults
-            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_res_blocks"], D["T"], D["beta_sched"], D["t_dim"], self.dev, D["c_dim"], D["num_classes"], step_size=self.step_size, DDIM_scale=self.DDIM_scale)
+            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_res_blocks"], D["T"], D["beta_sched"], D["t_dim"], self.dev, D["c_dim"], D["num_classes"], D["p_uncond"], step_size=self.step_size, DDIM_scale=self.DDIM_scale)
 
             # Load the model state
             self.load_state_dict(torch.load(loadDir + os.sep + loadFile, map_location=self.device))

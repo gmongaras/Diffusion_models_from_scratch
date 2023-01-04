@@ -23,7 +23,7 @@ def main():
     T = 4000
     Lambda = 0.001
     beta_sched = "cosine"
-    batchSize = 100
+    batchSize = 120
     numSteps = 3            # Number of steps to breakup the batchSize into. Instead
                             # of taking 1 massive step where the whole batch is loaded into
                             # memory, the batchSize is broken up into sizes of
@@ -34,7 +34,8 @@ def main():
     epochs = 1000000
     lr = 0.0002
     t_dim = 512
-    c_dim = 512            # Embedding dimension for class info (use None to not use class info)
+    c_dim = 512             # Embedding dimension for class info (use None to not use class info)
+    p_uncond = 0.2          # Probability of training on a null class (only used if c_dim is not None)
     dropoutRate = 0.1
     use_importance = False # Should importance sampling be used to sample values of t?
 
@@ -77,12 +78,11 @@ def main():
             data.append(file["data"])
             labels.append(file["labels"])
             del file
-            break
-        # for filename in archive2.filelist:
-        #     file = pickle.load(archive2.open(filename.filename, "r"))
-        #     data.append(file["data"])
-        #     labels.append(file["labels"])
-        #     del file
+        for filename in archive2.filelist:
+            file = pickle.load(archive2.open(filename.filename, "r"))
+            data.append(file["data"])
+            labels.append(file["labels"])
+            del file
         
         # Load the data
         archive1.close()
@@ -126,7 +126,7 @@ def main():
     
     # Train the model
     if training:
-        trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance)
+        trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance, p_uncond)
         trainer.train(img_data, labels if c_dim != None else None)
     
     # What does a sample image look like?
