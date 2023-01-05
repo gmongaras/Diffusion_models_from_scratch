@@ -289,9 +289,22 @@ class diff_model(nn.Module):
     # Inputs:
     #   x_t - Batch of images at the given value of t of shape (N, C, L, W)
     #   t - Batch of t values of shape (N) or a single t value
+    #   class_label - (optional and only used if the model uses class info) 
+    #                 Class we want the model to generate
+    #                 Use -1 to generate without a class
+    #   w - (optional and only used if the model uses class info) 
+    #       Classifier guidance scale factor. Use 0 for no classifier guidance.
     # Outputs:
     #   Image of shape (N, C, L, W) at timestep t-1, unnoised by one timestep
-    def unnoise_batch(self, x_t, t):
+    def unnoise_batch(self, x_t, t, class_label=-1, w=0.0):
+        # w assertion
+        assert w >= 0.0, "The value of w (classifier guidance factor) cannot be less than 0."
+
+        # class label assertion
+        class_label = int(class_label)
+        assert class_label > -2 and class_label < self.num_classes,\
+            f"The value of class_label must be in the range [-1,{self.num_classes-1}]"
+
         # Put the model in eval mode
         self.eval()
         
@@ -315,8 +328,38 @@ class diff_model(nn.Module):
         # correct noise and v prediction.
         t_enc = t*self.step_size + 1
         
-        # Get the model predictions for the noise and v values
-        noise_t, v_t = self.forward(x_t, t_enc)
+
+
+        ### Get the model predictions for the noise and v values
+
+        # If the number of classes is not defined, the model
+        # is not a conditioned model.
+        if self.num_classes == None:
+            noise_t, v_t = self.forward(x_t, t_enc)
+
+        # If the number of classes is defined, the model is a
+        # conditioned model
+        else:
+            # If the class label is -1, we only want the
+            # unconditioned data
+            if class_label == -1:
+                noise_t, v_t = self.forward(x_t, t_enc, torch.tensor([0]), torch.tensor([1]))
+
+            # If the class label is not -1, we want both
+            # the conditioned and unconditioned data
+            else:
+                # Unconditioned sample (sample on null class)
+                if w == 0:
+                    noise_t_un = v_t_un = 0
+                else:
+                    noise_t_un, v_t_un = self.forward(x_t, t_enc, torch.tensor([0]), torch.tensor([1]))
+                
+                # Conditional sample
+                noise_t_cond, v_t_cond = self.forward(x_t, t_enc, torch.tensor([class_label]), torch.tensor([0]))
+
+                # Mixed sample between unconditioned and conditioned
+                noise_t = (1+w)*noise_t_cond - w*noise_t_un
+                v_t = (1+w)*v_t_cond - w*v_t_un
 
         # Convert the v prediction variance
         var_t = self.vs_to_variance(v_t, t)
@@ -394,8 +437,24 @@ class diff_model(nn.Module):
 
 
     # Sample a batch of generated samples from the model
+    # Params:
+    #   batchSize - Number of images to generate in parallel
+    #   class_label - (optional and only used if the model uses class info) 
+    #                 Class we want the model to generate
+    #                 Use -1 to generate without a class
+    #   w - (optional and only used if the model uses class info) 
+    #       Classifier guidance scale factor. Use 0 for no classifier guidance.
+    #   save_intermediate - Return intermediate generation states
+    #                       to create a gif along with the image?
+    #   use_tqdm - Show a progress bar or not
+    #   unreduce - True to unreduce the image to the range [0, 255],
+    #              False to keep the image in the range [-1, 1]
+    # Outputs:
+    #   output - Output images of shape (N, C, L, W)
+    #   imgs - (only if save_intermediate=True) list of iternediate
+    #          outputs for the first image i the batch of shape (steps, C, L, W)
     @torch.no_grad()
-    def sample_imgs(self, batchSize, save_intermediate=False, use_tqdm=False, unreduce=False):
+    def sample_imgs(self, batchSize, class_label=-1, w=0.0, save_intermediate=False, use_tqdm=False, unreduce=False):
         # Make sure the model is in eval mode
         self.eval()
 
@@ -405,7 +464,7 @@ class diff_model(nn.Module):
         # Iterate T//step_size times to denoise the images
         imgs = []
         for t in tqdm(range(self.T, 0, -self.step_size)) if use_tqdm else range(self.T, 0, -self.step_size):
-            output = self.unnoise_batch(output, (t//self.step_size)-1)
+            output = self.unnoise_batch(output, (t//self.step_size)-1, class_label, w)
             if save_intermediate:
                 imgs.append(unreduce_image(output[0]).cpu().detach().int().clamp(0, 255).permute(1, 2, 0))
         
@@ -453,7 +512,7 @@ class diff_model(nn.Module):
             D = self.defaults
 
             # Reinitialize the model with the new defaults
-            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_res_blocks"], D["T"], D["beta_sched"], D["t_dim"], self.dev, D["c_dim"], D["num_classes"], D["p_uncond"], step_size=self.step_size, DDIM_scale=self.DDIM_scale)
+            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_res_blocks"], D["T"], D["beta_sched"], D["t_dim"], self.dev, D["c_dim"], D["num_classes"], 0.0, step_size=self.step_size, DDIM_scale=self.DDIM_scale)
 
             # Load the model state
             self.load_state_dict(torch.load(loadDir + os.sep + loadFile, map_location=self.device))

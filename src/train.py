@@ -12,7 +12,7 @@ from tqdm import tqdm
 import matplotlib.animation as animation
 
 
-def main():
+def train():
     #### Parameters
     
     ## Model params
@@ -158,4 +158,4 @@ def main():
     
     
 if __name__ == '__main__':
-    main()
+    train()
