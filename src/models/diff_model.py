@@ -7,7 +7,7 @@ import os
 import json
 import threading
 from ..blocks.convNext import convNext
-from .Variance_Scheduler import Variance_Scheduler, DDIM_Scheduler
+from .Variance_Scheduler import DDIM_Scheduler
 from tqdm import tqdm
 
 
@@ -129,8 +129,8 @@ class diff_model(nn.Module):
         epsilon = torch.randn_like(X, device=self.device)
         
         # The value of a_bar_t at timestep t depending on the scheduler
-        sqrt_a_bar_t = self.unsqueeze(self.scheduler.sample_sqrt_a_bar_t(t), -1, 3)
-        sqrt_1_minus_a_bar_t = self.unsqueeze(self.scheduler.sample_sqrt_1_minus_a_bar_t(t), -1, 3)
+        sqrt_a_bar_t = self.scheduler.sample_sqrt_a_bar_t(t)
+        sqrt_1_minus_a_bar_t = self.scheduler.sample_sqrt_1_minus_a_bar_t(t)
         
         # Noise the images
         return sqrt_a_bar_t*X + sqrt_1_minus_a_bar_t*epsilon, epsilon
@@ -155,7 +155,6 @@ class diff_model(nn.Module):
         
         # Get the beta and a values for the batch of t values
         beta_t = self.scheduler.sample_beta_t(t)
-        a_t = self.scheduler.sample_a_t(t)
         sqrt_a_t = self.scheduler.sample_sqrt_a_t(t)
         a_bar_t = self.scheduler.sample_a_bar_t(t)
         sqrt_a_bar_t = self.scheduler.sample_sqrt_a_bar_t(t)
@@ -163,15 +162,7 @@ class diff_model(nn.Module):
         a_bar_t1 = self.scheduler.sample_a_bar_t1(t)
         sqrt_a_bar_t1 = self.scheduler.sample_sqrt_a_bar_t1(t)
 
-        # Make sure everything is in the correct shape
-        beta_t = self.unsqueeze(beta_t, -1, 3)
-        a_t = self.unsqueeze(a_t, -1, 3)
-        sqrt_a_t = self.unsqueeze(sqrt_a_t, -1, 3)
-        a_bar_t = self.unsqueeze(a_bar_t, -1, 3)
-        sqrt_a_bar_t = self.unsqueeze(sqrt_a_bar_t, -1, 3)
-        sqrt_1_minus_a_bar_t = self.unsqueeze(sqrt_1_minus_a_bar_t, -1, 3)
-        a_bar_t1 = self.unsqueeze(a_bar_t1, -1, 3)
-        sqrt_a_bar_t1 = self.unsqueeze(sqrt_a_bar_t1, -1, 3)
+
         if len(t.shape) == 1:
             t = self.unsqueeze(t, -1, 3)
 
@@ -200,8 +191,8 @@ class diff_model(nn.Module):
     def vs_to_variance(self, v, t):
 
         # Get the scheduler information
-        beta_t = self.unsqueeze(self.scheduler.sample_beta_t(t), -1, 3)
-        beta_tilde_t = self.unsqueeze(self.scheduler.sample_beta_tilde_t(t), -1, 3)
+        beta_t = self.scheduler.sample_beta_t(t)
+        beta_tilde_t = self.scheduler.sample_beta_tilde_t(t)
         
         # Return the variance value
         return torch.exp(torch.clamp(v*torch.log(beta_t) + (1-v)*torch.log(beta_tilde_t), torch.tensor(-30, device=beta_t.device), torch.tensor(30, device=beta_t.device)))
@@ -294,9 +285,10 @@ class diff_model(nn.Module):
     #                 Use -1 to generate without a class
     #   w - (optional and only used if the model uses class info) 
     #       Classifier guidance scale factor. Use 0 for no classifier guidance.
+    #   corrected - True to put a limit on generation. False to not restrain generation
     # Outputs:
     #   Image of shape (N, C, L, W) at timestep t-1, unnoised by one timestep
-    def unnoise_batch(self, x_t, t, class_label=-1, w=0.0):
+    def unnoise_batch(self, x_t, t, class_label=-1, w=0.0, corrected=False):
         # w assertion
         assert w >= 0.0, "The value of w (classifier guidance factor) cannot be less than 0."
 
@@ -371,31 +363,16 @@ class diff_model(nn.Module):
 
         # Variance for a DDPM to a DDIM
         # Get the beta and a values for the batch of t values
-        beta_t = self.scheduler.sample_beta_t(t)
-        a_t = self.scheduler.sample_a_t(t)
-        sqrt_a_t = self.scheduler.sample_sqrt_a_t(t)
-        a_bar_t = self.scheduler.sample_a_bar_t(t)
         sqrt_a_bar_t = self.scheduler.sample_sqrt_a_bar_t(t)
         sqrt_1_minus_a_bar_t = self.scheduler.sample_sqrt_1_minus_a_bar_t(t)
         a_bar_t1 = self.scheduler.sample_a_bar_t1(t)
         sqrt_a_bar_t1 = self.scheduler.sample_sqrt_a_bar_t1(t)
         beta_tilde_t = self.scheduler.sample_beta_tilde_t(t)
 
-        # Make sure everything is in the correct shape
-        beta_t = self.unsqueeze(beta_t, -1, 3)
-        a_t = self.unsqueeze(a_t, -1, 3)
-        sqrt_a_t = self.unsqueeze(sqrt_a_t, -1, 3)
-        a_bar_t = self.unsqueeze(a_bar_t, -1, 3)
-        sqrt_a_bar_t = self.unsqueeze(sqrt_a_bar_t, -1, 3)
-        sqrt_1_minus_a_bar_t = self.unsqueeze(sqrt_1_minus_a_bar_t, -1, 3)
-        a_bar_t1 = self.unsqueeze(a_bar_t1, -1, 3)
-        sqrt_a_bar_t1 = self.unsqueeze(sqrt_a_bar_t1, -1, 3)
-        beta_tilde_t = self.unsqueeze(beta_tilde_t, -1, 3)
 
 
+        ### DDIM process
 
-        ### This is the DDIM process. x_0 blows up if not restricted, so x_0
-        ### is constrained between -1.5 and 1.5 similar to the DDPM implementation.
         # The variance the model predicted and the
         # variance the model did not predict
         var_t = self.DDIM_scale*var_t
@@ -413,6 +390,8 @@ class diff_model(nn.Module):
         # but if the predicted variance is used, this isn't necessarily true.
         # The predicted variance is used as in the improved DDPM paper
         x_0_pred = ((x_t-sqrt_1_minus_a_bar_t*noise_t)/sqrt_a_bar_t)
+        if corrected:
+            x_0_pred = x_0_pred.clamp(-1, 1)
         x_t_dir_pred = torch.sqrt(torch.clamp(1-a_bar_t1-beta_tilde_t, 0, torch.inf))*noise_t
         random_noise = torch.randn((noise_t.shape), device=self.device)*torch.sqrt(var_t)
 
@@ -449,12 +428,13 @@ class diff_model(nn.Module):
     #   use_tqdm - Show a progress bar or not
     #   unreduce - True to unreduce the image to the range [0, 255],
     #              False to keep the image in the range [-1, 1]
+    #   corrected - True to put a limit on generation. False to not restrain generation
     # Outputs:
     #   output - Output images of shape (N, C, L, W)
     #   imgs - (only if save_intermediate=True) list of iternediate
     #          outputs for the first image i the batch of shape (steps, C, L, W)
     @torch.no_grad()
-    def sample_imgs(self, batchSize, class_label=-1, w=0.0, save_intermediate=False, use_tqdm=False, unreduce=False):
+    def sample_imgs(self, batchSize, class_label=-1, w=0.0, save_intermediate=False, use_tqdm=False, unreduce=False, corrected=False):
         # Make sure the model is in eval mode
         self.eval()
 
@@ -464,7 +444,7 @@ class diff_model(nn.Module):
         # Iterate T//step_size times to denoise the images
         imgs = []
         for t in tqdm(range(self.T, 0, -self.step_size)) if use_tqdm else range(self.T, 0, -self.step_size):
-            output = self.unnoise_batch(output, (t//self.step_size)-1, class_label, w)
+            output = self.unnoise_batch(output, (t//self.step_size)-1, class_label, w, corrected)
             if save_intermediate:
                 imgs.append(unreduce_image(output[0]).cpu().detach().int().clamp(0, 255).permute(1, 2, 0))
         

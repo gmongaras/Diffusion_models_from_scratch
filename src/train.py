@@ -96,7 +96,7 @@ def train():
     # How many classes are there?
     num_classes = None
     if c_dim != None:
-        num_classes = labels.max()
+        num_classes = int(labels.max())
         if labels.min() == 1:
             num_classes+=1
     

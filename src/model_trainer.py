@@ -160,11 +160,10 @@ class model_trainer():
     #   epsilon - True epsilon values of shape (N, C, L, W)
     #   epsilon_pred - Predicted epsilon values of shape (N, C, L, W)
     #   x_t - The noised image at time t of shape (N, C, L, W)
-    #   x_t1 - The unnoised image at time t-1 of shape (N, C, L, W)
     #   t - The value timestep of shape (N)
     # Outputs:
     #   Loss as a scalar over the entire batch
-    def lossFunct(self, epsilon, epsilon_pred, v, x_0, x_t, x_t1, t):
+    def lossFunct(self, epsilon, epsilon_pred, v, x_0, x_t, t):
         
         """
         There's one important note I looked passed when reading the original
@@ -194,14 +193,6 @@ class model_trainer():
         beta_tilde_t = self.model.scheduler.sample_beta_tilde_t(t)
         sqrt_a_bar_t1 = self.model.scheduler.sample_sqrt_a_bar_t1(t)
         sqrt_a_t = self.model.scheduler.sample_sqrt_a_t(t)
-
-        # Unsqueezing the values to match shape
-        beta_t = self.model.unsqueeze(beta_t, -1, 3)
-        a_bar_t = self.model.unsqueeze(a_bar_t, -1, 3)
-        a_bar_t1 = self.model.unsqueeze(a_bar_t1, -1, 3)
-        beta_tilde_t = self.model.unsqueeze(beta_tilde_t, -1, 3)
-        sqrt_a_bar_t1 = self.model.unsqueeze(sqrt_a_bar_t1, -1, 3)
-        sqrt_a_t = self.model.unsqueeze(sqrt_a_t, -1, 3)
 
         # Get the true mean distribution
         mean_t = ((sqrt_a_bar_t1*beta_t)/(1-a_bar_t))*x_0 +\
@@ -273,10 +264,10 @@ class model_trainer():
         scaled = True if X.max() > 1.0 else False
 
         # Losses over epochs
-        self.losses_comb = []
-        self.losses_mean = []
-        self.losses_var = []
-        self.epochs_list = []
+        self.losses_comb = np.array([])
+        self.losses_mean = np.array([])
+        self.losses_var = np.array([])
+        self.epochs_list = np.array([])
         
         # Iterate over the desiered number of epochs
         for epoch in range(1, self.epochs+1):
@@ -327,9 +318,6 @@ class model_trainer():
                     nullCls = None
                 
 
-                # Noise the batch to time t-1
-                batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)
-                
                 # Noise the batch to time t
                 batch_x_t, epsilon_t = self.model.noise_batch(batch_x_0, t_vals)
                 
@@ -340,7 +328,7 @@ class model_trainer():
                 
                 # Get the loss
                 loss, loss_mean, loss_var = self.lossFunct(epsilon_t, epsilon_t1_pred, v_t1_pred, 
-                                    batch_x_0, batch_x_t, batch_x_t1, t_vals)
+                                    batch_x_0, batch_x_t, t_vals)
 
                 # Scale the loss to be consistent with the batch size. If the loss
                 # isn't scaled, then the loss will be treated as an independent
@@ -364,12 +352,12 @@ class model_trainer():
             self.optim.zero_grad()
 
             # Save the loss values
-            self.losses_comb.append(losses_comb_s.item())
-            self.losses_mean.append(losses_mean_s.item())
-            self.losses_var.append(losses_var_s.item())
-            self.epochs_list.append(epoch)
+            self.losses_comb = np.append(self.losses_comb, losses_comb_s.item())
+            self.losses_mean = np.append(self.losses_mean, losses_mean_s.item())
+            self.losses_var = np.append(self.losses_var, losses_var_s.item())
+            self.epochs_list = np.append(self.epochs_list, epoch)
             
-            print(f"Loss at epoch #{epoch}  Combined: {round(losses_comb_s.item(), 4)}    Mean: {round(losses_mean_s.item(), 4)}    Variance: {round(losses_var_s.item(), 6)}")
+            print(f"Loss at epoch #{epoch}  Combined: {round(self.losses_comb[-10:].mean(), 4)}    Mean: {round(self.losses_mean[-10:].mean(), 4)}    Variance: {round(self.losses_var[-10:].mean(), 6)}")
     
 
 

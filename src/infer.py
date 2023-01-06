@@ -9,20 +9,22 @@ def infer():
 
     ## Loading params
     loadDir = "models/"
-    loadFile = "model_50000.pkl"
-    loadDefFile = "model_params_30000.json"
+    loadFile = "model_40000.pkl"
+    loadDefFile = "model_params_10000.json"
 
     ## Generation paramters
     step_size = 100                # Step size to take when generating images
     DDIM_scale = 0          # Scale to transition between a DDIM, DDPM, or in between.
                             # use 0 for pure DDIM and 1 for pure DDPM
     device = "cpu"
-    w = 0.1                 # (only used if the model uses class info) 
+    w = 4                 # (only used if the model uses class info) 
                             # Classifier guidance scale factor
                             # Use 0 for no classifier guidance.
-    class_label = -1         # (only used if the model uses class info) 
+    class_label = 0         # (only used if the model uses class info) 
                             # Class we want the model to generate
                             # Use -1 to generate without a class
+    corrected = False       # True to put a limit on generation. 
+                            # False to not restrain generation
     
     
     
@@ -34,10 +36,10 @@ def infer():
     model = diff_model(3, 3, 1, 1, 100000, "cosine", 100, device, 100, 1000, 0.0, step_size, DDIM_scale)
     
     # Load in the model weights
-    model.loadModel(loadDir, loadFile, loadDefFile,)
+    model.loadModel(loadDir, loadFile, loadDefFile)
     
     # Sample the model
-    noise, imgs = model.sample_imgs(1, class_label, w, True, True, True)
+    noise, imgs = model.sample_imgs(1, class_label, w, True, True, True, corrected)
             
     # Convert the sample image to 0->255
     # and show it
