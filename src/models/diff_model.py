@@ -95,7 +95,7 @@ class diff_model(nn.Module):
 
         # Used to embed the values of c so the model can use it
         if c_dim != None:
-            self.c_emb = nn.Linear(self.num_classes, c_dim, bias=False)
+            self.c_emb = nn.Linear(self.num_classes, c_dim, bias=False).to(device)
         else:
             self.c_emb = None
 

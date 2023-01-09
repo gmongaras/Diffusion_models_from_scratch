@@ -42,7 +42,7 @@ class U_Net(nn.Module):
         curCh = embCh
         for i in range(1, num_res_blocks+1):
             blocks.append(resBlock(curCh, embCh*(2**(chMult*i)), t_dim, c_dim, head_res=16, dropoutRate=dropoutRate))
-            if i != num_res_blocks:
+            if i != num_res_blocks+1:
                 blocks.append(nn.Conv2d(embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), kernel_size=3, stride=2, padding=1))
             curCh = embCh*(2**(chMult*i))
         self.downBlocks = nn.Sequential(
@@ -55,23 +55,24 @@ class U_Net(nn.Module):
         # -> (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks))
         intermediateCh = curCh
         self.intermediate = nn.Sequential(
-            convNext(intermediateCh, intermediateCh, t_dim, dropoutRate=dropoutRate),
-            # resBlock(intermediateCh, intermediateCh, t_dim, c_dim, dropoutRate=dropoutRate),
+            # convNext(intermediateCh, intermediateCh, t_dim, dropoutRate=dropoutRate),
+            resBlock(intermediateCh, intermediateCh, t_dim, c_dim, dropoutRate=dropoutRate),
             Efficient_Channel_Attention(intermediateCh),
-            convNext(intermediateCh, intermediateCh, t_dim, dropoutRate=dropoutRate)
+            # convNext(intermediateCh, intermediateCh, t_dim, dropoutRate=dropoutRate)
+            resBlock(intermediateCh, intermediateCh, t_dim, c_dim, dropoutRate=dropoutRate),
         )
         
         
         # Upsample
         # (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks)) -> (N, inCh, L, W)
         blocks = []
-        for i in range(num_res_blocks, 0, -1):
-            if i == 1:
-                blocks.append(resBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), t_dim, c_dim, num_heads=1, dropoutRate=dropoutRate))
+        for i in range(num_res_blocks, -1, -1):
+            if i == 0:
+                blocks.append(resBlock(embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), t_dim, c_dim, num_heads=1, dropoutRate=dropoutRate))
                 blocks.append(resBlock(embCh*(2**(chMult*i)), outCh, t_dim, c_dim, num_heads=1, dropoutRate=dropoutRate))
             else:
+                blocks.append(nn.ConvTranspose2d(embCh*(2**(chMult*(i))), embCh*(2**(chMult*(i))), kernel_size=4, stride=2, padding=1))
                 blocks.append(resBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*(i-1))), t_dim, c_dim, head_res=16, dropoutRate=dropoutRate))
-                blocks.append(nn.ConvTranspose2d(embCh*(2**(chMult*(i-1))), embCh*(2**(chMult*(i-1))), kernel_size=4, stride=2, padding=1))
         self.upBlocks = nn.Sequential(
             *blocks
         )
@@ -129,7 +130,7 @@ class U_Net(nn.Module):
         # through the intermediate blocks
         for b in self.intermediate:
             try:
-                X = b(X, t)
+                X = b(X, t, c)
             except TypeError:
                 X = b(X)
         
@@ -137,14 +138,14 @@ class U_Net(nn.Module):
         # block to get the original shape
         b = 0
         while b < len(self.upBlocks):
+            if b < len(self.upBlocks) and type(self.upBlocks[b]) == nn.ConvTranspose2d:
+                X = self.upBlocks[b](X)
+                b += 1
             if len(residuals) > 0:
                 X = self.upBlocks[b](torch.cat((X, residuals[0]), dim=1), t, c)
             else:
                 X = self.upBlocks[b](X, t, c)
             b += 1
-            if b < len(self.upBlocks) and type(self.upBlocks[b]) == nn.ConvTranspose2d:
-                X = self.upBlocks[b](X)
-                b += 1
             residuals = residuals[1:]
         
         # Send the output through the final block

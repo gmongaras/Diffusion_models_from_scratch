@@ -3,7 +3,7 @@ from .convNext import convNext
 from .Non_local_MH import Non_local_MH
 from .Efficient_Channel_Attention import Efficient_Channel_Attention
 from .Spatial_Channel_Attention import Spatial_Channel_Attention
-from .clsAttn import clsAttn, clsAttn_Linear
+from .clsAttn import clsAttn, clsAttn_Linear, Efficient_Cls_Attention
 
 
 
@@ -31,10 +31,11 @@ class resBlock(nn.Module):
 
         self.block = nn.Sequential(
             convNext(inCh, outCh, t_dim, dropoutRate),
-            clsAttn_Linear(c_dim, outCh) if self.useCls == True else nn.Identity(),
+            clsAttn(c_dim, outCh) if self.useCls == True else nn.Identity(),
+            # Efficient_Cls_Attention(c_dim, outCh) if self.useCls == True else nn.Identity(),
             convNext(outCh, outCh, t_dim, dropoutRate),
             # convNext(outCh, outCh, True, t_dim, dropoutRate),
-            # Efficient_Channel_Attention(outCh) if use_attn else nn.Identity(),
+            Efficient_Channel_Attention(outCh) if use_attn else nn.Identity(),
             # Non_local_MH(outCh, num_heads, head_res, spatial=True),
             # Spatial_Channel_Attention(outCh, num_heads, head_res)
         )
@@ -55,7 +56,7 @@ class resBlock(nn.Module):
         for b in self.block:
             if type(b) == convNext:
                 X = b(X, t)
-            elif type(b) == clsAttn or type(b) == clsAttn_Linear:
+            elif type(b) == clsAttn or type(b) == clsAttn_Linear or type(b) == Efficient_Cls_Attention:
                 X = b(X, c)
             else:
                 X = b(X)

@@ -32,7 +32,7 @@ class convNext(nn.Sequential):
         #   1x1 conv
         self.block = nn.Sequential(
             nn.Conv2d(inCh, inCh, 7, padding=3, groups=inCh),
-            nn.GroupNorm(1, inCh),
+            nn.GroupNorm(inCh//4 if inCh > 4 else 1, inCh),
             nn.Dropout2d(dropoutRate),
             nn.Conv2d(inCh, inCh*2, 1),
             nn.GELU(),

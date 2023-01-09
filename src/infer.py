@@ -9,22 +9,24 @@ def infer():
 
     ## Loading params
     loadDir = "models/"
-    loadFile = "model_40000.pkl"
+    loadFile = "model_10000.pkl"
     loadDefFile = "model_params_10000.json"
 
     ## Generation paramters
-    step_size = 100                # Step size to take when generating images
+    step_size = 80                # Step size to take when generating images
     DDIM_scale = 0          # Scale to transition between a DDIM, DDPM, or in between.
-                            # use 0 for pure DDIM and 1 for pure DDPM
-    device = "cpu"
+                            # use 0 for  pure DDIM and 1 for pure DDPM
+    device = "gpu"
     w = 4                 # (only used if the model uses class info) 
                             # Classifier guidance scale factor
                             # Use 0 for no classifier guidance.
-    class_label = 0         # (only used if the model uses class info) 
+    class_label = -1         # (only used if the model uses class info) 
                             # Class we want the model to generate
                             # Use -1 to generate without a class
     corrected = False       # True to put a limit on generation. 
                             # False to not restrain generation
+                            # This may make generation more stable if
+                            # the model is generating nan or mostly black images
     
     
     
