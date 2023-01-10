@@ -1,14 +1,57 @@
 import torch
 from torch import nn
-from .helpers.image_rescale import reduce_image, unreduce_image
+from helpers.image_rescale import reduce_image, unreduce_image
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 import threading
 
+import torch.multiprocessing as mp
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.distributed as dist
+
+from CustomDataset import CustomDataset
+from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data.dataloader import DataLoader
+
 
 cpu = torch.device('cpu')
 gpu = torch.device('cuda:0')
+
+
+
+
+def init_distributed():
+
+    # Initializes the distributed backend which will take care of synchronizing nodes/GPUs
+    dist_url = "env://" # default
+
+    # only works with torch.distributed.launch // torchrun
+    rank = int(os.environ["RANK"])
+    world_size = int(os.environ['WORLD_SIZE'])
+    local_rank = int(os.environ['LOCAL_RANK'])
+    
+    # Try the nccl backend
+    try:
+        dist.init_process_group(
+                backend="nccl",
+                init_method=dist_url,
+                world_size=world_size,
+                rank=rank)
+    # Use the gloo backend if nccl isn't supported
+    except RuntimeError:
+        dist.init_process_group(
+                backend="gloo",
+                init_method=dist_url,
+                world_size=world_size,
+                rank=rank)
+
+    # this will make all .cuda() calls work properly
+    torch.cuda.set_device(local_rank)
+
+    # synchronizes all the threads to reach this point before moving on
+    dist.barrier()
 
 
 
@@ -31,10 +74,9 @@ class model_trainer():
     # use_importance - True to use importance sampling to sample values of t,
     #                  False to use uniform sampling.
     # p_uncond - Probability of training on a null class (only used if class info is used)
-    def __init__(self, diff_model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance, p_uncond=None):
+    def __init__(self, diff_model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance, p_uncond=None, max_world_size=None):
         # Saved info
         self.T = diff_model.T
-        self.model = diff_model
         self.batchSize = batchSize//numSteps
         self.numSteps = numSteps
         self.epochs = epochs
@@ -58,9 +100,14 @@ class model_trainer():
             device = torch.device('cpu')
         self.device = device
         self.dev = dev
+
+        # Initialize the environment
+        init_distributed()
         
         # Put the model on the desired device
-        self.model.to(self.device)
+        local_rank = int(os.environ['LOCAL_RANK']) if max_world_size is None else min(int(os.environ['LOCAL_RANK']), max_world_size)
+        self.model = DDP(diff_model, device_ids=[local_rank], find_unused_parameters=True)
+        # self.model.to(self.device)
             
         # Uniform distribution for values of t
         self.t_vals = np.arange(0, self.T.detach().cpu().numpy())
@@ -164,6 +211,9 @@ class model_trainer():
     # Outputs:
     #   Loss as a scalar over the entire batch
     def lossFunct(self, epsilon, epsilon_pred, v, x_0, x_t, t):
+        # Put the data on the correct device
+        x_0 = x_0.to(epsilon_pred.device)
+        x_t = x_t.to(epsilon_pred.device)
         
         """
         There's one important note I looked passed when reading the original
@@ -180,19 +230,19 @@ class model_trainer():
         """
 
         # Get the mean and variance from the model
-        mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t, True)
-        var_t_pred = self.model.vs_to_variance(v, t)
+        mean_t_pred = self.model.module.noise_to_mean(epsilon_pred, x_t, t, True)
+        var_t_pred = self.model.module.vs_to_variance(v, t)
 
 
         ### Preparing for the real normal distribution
 
         # Get the scheduler information
-        beta_t = self.model.scheduler.sample_beta_t(t)
-        a_bar_t = self.model.scheduler.sample_a_bar_t(t)
-        a_bar_t1 = self.model.scheduler.sample_a_bar_t1(t)
-        beta_tilde_t = self.model.scheduler.sample_beta_tilde_t(t)
-        sqrt_a_bar_t1 = self.model.scheduler.sample_sqrt_a_bar_t1(t)
-        sqrt_a_t = self.model.scheduler.sample_sqrt_a_t(t)
+        beta_t = self.model.module.scheduler.sample_beta_t(t)
+        a_bar_t = self.model.module.scheduler.sample_a_bar_t(t)
+        a_bar_t1 = self.model.module.scheduler.sample_a_bar_t1(t)
+        beta_tilde_t = self.model.module.scheduler.sample_beta_tilde_t(t)
+        sqrt_a_bar_t1 = self.model.module.scheduler.sample_sqrt_a_bar_t1(t)
+        sqrt_a_t = self.model.module.scheduler.sample_sqrt_a_t(t)
 
         # Get the true mean distribution
         mean_t = ((sqrt_a_bar_t1*beta_t)/(1-a_bar_t))*x_0 +\
@@ -263,17 +313,31 @@ class model_trainer():
         # Should the images be scaled?
         scaled = True if X.max() > 1.0 else False
 
+        # Create a sampler and loader over the dataset
+        dataset = CustomDataset(X, classes, scaled)
+        data_loader = DataLoader(dataset, batch_size=self.batchSize,
+            pin_memory=True, num_workers=0, 
+            drop_last=False, sampler=
+                DistributedSampler(dataset, shuffle=True)
+            )
+
         # Losses over epochs
         self.losses_comb = np.array([])
         self.losses_mean = np.array([])
         self.losses_var = np.array([])
         self.epochs_list = np.array([])
+
+        # Number of steps taken
+        num_steps = 0
         
         # Iterate over the desiered number of epochs
         for epoch in range(1, self.epochs+1):
+            # Set the epoch number for the dataloader
+            data_loader.sampler.set_epoch(epoch)
+
             # Model saving and graphing
             if epoch%self.numSaveEpochs == 0:
-                self.model.saveModel(self.saveDir, epoch)
+                self.model.module.saveModel(self.saveDir, epoch)
                 self.graph_losses()
 
             # Cumulative loss over the batch over all steps
@@ -281,18 +345,12 @@ class model_trainer():
             losses_mean_s = torch.tensor(0.0, requires_grad=False)
             losses_var_s = torch.tensor(0.0, requires_grad=False)
 
-            # Iterate over all the steps before updating the model
-            for step in range(0, self.numSteps):
-                # Get a sample of `batchSize` number of images and put
-                # it on the correct device
-                samp = torch.randperm(X.shape[0])[:self.batchSize]
-                batch_x_0 = X[samp].to(self.device)
-                if useCls:
-                    batch_class = classes[samp].to(torch.int)
-
-                # Scale the images
-                if scaled:
-                    batch_x_0 = reduce_image(batch_x_0)
+            # Iterate over all data
+            for i, data in enumerate(data_loader):
+                batch_x_0, batch_class = data
+                
+                # Increate the number of steps taken
+                num_steps += 1
                 
                 # Get values of t to noise the data
                 # Sample using weighted values if each t has 10 loss values
@@ -319,7 +377,7 @@ class model_trainer():
                 
 
                 # Noise the batch to time t
-                batch_x_t, epsilon_t = self.model.noise_batch(batch_x_0, t_vals)
+                batch_x_t, epsilon_t = self.model.module.noise_batch(batch_x_0, t_vals)
                 
                 # Send the noised data through the model to get the
                 # predicted noise and variance for batch at t-1
@@ -346,10 +404,15 @@ class model_trainer():
                 losses_comb_s += loss.cpu().detach()
                 losses_mean_s += loss_mean.cpu().detach()
                 losses_var_s += loss_var.cpu().detach()
-            
-            # Update the model using all losses over the steps
-            self.optim.step()
-            self.optim.zero_grad()
+
+                # If the number of steps taken is a multiple of the number
+                # of desired steps, update the models
+                if num_steps%self.numSteps == 0:
+                    # Update the model using all losses over the steps
+                    self.optim.step()
+                    self.optim.zero_grad()
+
+                    print(i, loss.cpu().detach())
 
             # Save the loss values
             self.losses_comb = np.append(self.losses_comb, losses_comb_s.item())

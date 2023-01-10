@@ -1,12 +1,17 @@
+# Realtive import
+import sys
+sys.path.append('../helpers')
+sys.path.append('../blocks')
+
 import torch
 from torch import nn
 from .U_Net import U_Net
-from ..helpers.image_rescale import reduce_image, unreduce_image
-from ..blocks.PositionalEncoding import PositionalEncoding
+from helpers.image_rescale import reduce_image, unreduce_image
+from blocks.PositionalEncoding import PositionalEncoding
 import os
 import json
 import threading
-from ..blocks.convNext import convNext
+from blocks.convNext import convNext
 from .Variance_Scheduler import DDIM_Scheduler
 from tqdm import tqdm
 
@@ -125,6 +130,10 @@ class diff_model(nn.Module):
     #   Batch of noised images of shape (N, C, L, W)
     #   Noise added to the images of shape (N, C, L, W)
     def noise_batch(self, X, t):
+        # Ensure the data is on the correct device
+        X = X.to(self.device)
+        t = t.to(self.device)
+
         # Sample gaussian noise
         epsilon = torch.randn_like(X, device=self.device)
         
@@ -208,6 +217,13 @@ class diff_model(nn.Module):
     #   noise - Batch of noise predictions of shape (B, C, L, W)
     #   v - Batch of v predictions of shape (B, C, L, W)
     def forward(self, x_t, t, c=None, nullCls=None):
+        # Ensure the data is on the correct device
+        x_t = x_t.to(self.device)
+        t = t.to(self.device)
+        if c != None:
+            c = c.to(self.device)
+        if nullCls != None:
+            nullCls = nullCls.to(self.device)
 
         # Make sure t is in the correct form
         if t != None:

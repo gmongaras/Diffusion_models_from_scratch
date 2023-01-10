@@ -1,9 +1,9 @@
 import zipfile
 import pickle
 import torch
-from .models.diff_model import diff_model
+from models.diff_model import diff_model
 import numpy as np
-from .model_trainer import model_trainer
+from model_trainer import model_trainer
 import math
 
 
@@ -65,11 +65,12 @@ def train():
         data.append(file["data"])
         labels.append(file["labels"])
         del file
-    for filename in archive2.filelist:
-        file = pickle.load(archive2.open(filename.filename, "r"))
-        data.append(file["data"])
-        labels.append(file["labels"])
-        del file
+        break
+    # for filename in archive2.filelist:
+    #     file = pickle.load(archive2.open(filename.filename, "r"))
+    #     data.append(file["data"])
+    #     labels.append(file["labels"])
+    #     del file
     
     # Load the data
     archive1.close()
@@ -81,7 +82,6 @@ def train():
     # Convert the data to a tensor
     img_data = torch.tensor(img_data, dtype=torch.float32, device=torch.device("cpu"))
     img_data = img_data.reshape(img_data.shape[0], 3, 64, 64)
-
 
 
 
