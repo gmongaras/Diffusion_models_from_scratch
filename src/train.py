@@ -5,6 +5,7 @@ from models.diff_model import diff_model
 import numpy as np
 from model_trainer import model_trainer
 import math
+import os
 
 
 def train():
@@ -33,10 +34,11 @@ def train():
     p_uncond = 0.2          # Probability of training on a null class (only used if c_dim is not None)
     dropoutRate = 0.1
     use_importance = False # Should importance sampling be used to sample values of t?
+    data_path = "data/Imagenet64"
     
     ## Saving params
     saveDir = "models/"
-    numSaveEpochs = 10000
+    numSaveSteps = 10000
     
     ## Loading params
     loadModel = False
@@ -45,60 +47,23 @@ def train():
     loadDefFile = "model_params_10000.json"
     
     ## Data parameters
-    reshapeType = "down" # Should the data be reshaped to the nearest power of 2 down, up, or not at all?
+    reshapeType = None # Should the data be reshaped to the nearest power of 2 "down", "up", or not at all?
     
     
     
-    
-    
-    ### Load in the data
-    
-    # Open the zip files
-    archive1 = zipfile.ZipFile('data/Imagenet64_train_part1.zip', 'r')
-    archive2 = zipfile.ZipFile('data/Imagenet64_train_part2.zip', 'r')
-    
-    # Read the pickle data
-    data = []
-    labels = []
-    for filename in archive1.filelist:
-        file = pickle.load(archive1.open(filename.filename, "r"))
-        data.append(file["data"])
-        labels.append(file["labels"])
-        del file
-        break
-    # for filename in archive2.filelist:
-    #     file = pickle.load(archive2.open(filename.filename, "r"))
-    #     data.append(file["data"])
-    #     labels.append(file["labels"])
-    #     del file
-    
-    # Load the data
-    archive1.close()
-    archive2.close()
-    img_data = np.concatenate((data), axis=0)
-    labels = np.concatenate((labels), axis=0)
-    del data
-
-    # Convert the data to a tensor
-    img_data = torch.tensor(img_data, dtype=torch.float32, device=torch.device("cpu"))
-    img_data = img_data.reshape(img_data.shape[0], 3, 64, 64)
 
 
 
-    # Reshape the image to the nearest power of 2
-    if reshapeType == "down":
-        next_power_of_2 = 2**math.floor(math.log2(img_data.shape[-1]))
-    elif reshapeType == "up":
-        next_power_of_2 = 2**math.ceil(math.log2(img_data.shape[-1]))
-    if next_power_of_2 != img_data.shape[-1]:
-        img_data = torch.nn.functional.interpolate(img_data, (next_power_of_2, next_power_of_2))
-    
-    # How many classes are there?
-    num_classes = None
-    if c_dim != None:
-        num_classes = int(labels.max())
-        if labels.min() == 1:
-            num_classes+=1
+
+
+    # Load in the metadata
+    metadata = pickle.load(open(f"{data_path}{os.sep}metadata.pkl", "rb"))
+    cls_min = metadata["cls_min"]
+    cls_max = metadata["cls_max"]
+    num_data = metadata["num_data"]
+
+    # Get the number of classes
+    num_classes = cls_max
     
     
     
@@ -112,8 +77,9 @@ def train():
         model.loadModel(loadDir, loadFile, loadDefFile,)
     
     # Train the model
-    trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance, p_uncond)
-    trainer.train(img_data, labels if c_dim != None else None)
+    trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond)
+    trainer.train(data_path, num_data, cls_min, reshapeType)
+    # trainer.train(img_data, labels if c_dim != None else None)
     
     
     

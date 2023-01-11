@@ -70,11 +70,11 @@ class model_trainer():
     # lr - Learning rate of the model optimizer
     # device - Device to put the model and data on (gpu or cpu)
     # saveDir - Directory to save the model to
-    # numSaveEpochs - Number of epochs until saving the models
+    # numSaveSteps - Number of steps until saving the models
     # use_importance - True to use importance sampling to sample values of t,
     #                  False to use uniform sampling.
     # p_uncond - Probability of training on a null class (only used if class info is used)
-    def __init__(self, diff_model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance, p_uncond=None, max_world_size=None):
+    def __init__(self, diff_model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond=None, max_world_size=None):
         # Saved info
         self.T = diff_model.T
         self.batchSize = batchSize//numSteps
@@ -82,7 +82,7 @@ class model_trainer():
         self.epochs = epochs
         self.Lambda = Lambda
         self.saveDir = saveDir
-        self.numSaveEpochs = numSaveEpochs
+        self.numSaveSteps = numSaveSteps
         self.use_importance = use_importance
         self.p_uncond = p_uncond
         
@@ -281,40 +281,28 @@ class model_trainer():
         
     
     
-    # Trains the saved model
+    # Trains the model
     # Inputs:
-    #   X - A batch of images of shape (B, C, L, W)
-    #   classes - (optional) A batch of classes of shape (N)
-    def train(self, X, classes=None):
+    #   data_path - Path to the data to load in
+    #   num_data - Number of datapoints loaded
+    #   cls_min - What is the nim calss value
+    #   reshapeType - Determines how data should be reshaped
+    def train(self, data_path, num_data, cls_min, reshapeType):
 
         # Was class information given?
-        if type(classes) == type(None):
-            useCls = False
-        else:
+        if self.model.module.c_emb is not None:
             useCls = True
 
             # Class assertion
             assert self.p_uncond != None, "p_uncond cannot be None when using class information"
-
-        # Make sure the data are tensors
-        if not isinstance(torch.tensor([1]), type(X)):
-            X = torch.tensor(X, device=cpu)
-        if useCls and not isinstance(torch.tensor([1]), type(classes)):
-            classes = torch.tensor(classes, device=cpu)
+        else:
+            useCls = False
 
         # Put the model is train mode
         self.model.train()
-        
-        # Put the data on the cpu
-        X = X.to(cpu)
-        if useCls:
-            classes = classes.to(cpu)
-        
-        # Should the images be scaled?
-        scaled = True if X.max() > 1.0 else False
 
         # Create a sampler and loader over the dataset
-        dataset = CustomDataset(X, classes, scaled)
+        dataset = CustomDataset(data_path, num_data, cls_min, scale=reshapeType)
         data_loader = DataLoader(dataset, batch_size=self.batchSize,
             pin_memory=True, num_workers=0, 
             drop_last=False, sampler=
@@ -332,13 +320,9 @@ class model_trainer():
         
         # Iterate over the desiered number of epochs
         for epoch in range(1, self.epochs+1):
-            # Set the epoch number for the dataloader
+            # Set the epoch number for the dataloader to seed the
+            # randomization of the sampler
             data_loader.sampler.set_epoch(epoch)
-
-            # Model saving and graphing
-            if epoch%self.numSaveEpochs == 0:
-                self.model.module.saveModel(self.saveDir, epoch)
-                self.graph_losses()
 
             # Cumulative loss over the batch over all steps
             losses_comb_s = torch.tensor(0.0, requires_grad=False)
@@ -360,24 +344,25 @@ class model_trainer():
                     p_t = p_t / p_t.sum()
 
                     # Sample the values of t
-                    t_vals = torch.tensor(np.random.choice(self.t_vals, size=self.batchSize, p=p_t), device=batch_x_0.device)
+                    t_vals = torch.tensor(np.random.choice(self.t_vals, size=batch_x_0.shape[0], p=p_t), device=batch_x_0.device)
                 # Sample uniformly until we get to that point or if importance
                 # sampling is not used
                 else:
-                    t_vals = self.T_dist.sample((self.batchSize,)).to(self.device)
+                    t_vals = self.T_dist.sample((batch_x_0.shape[0],)).to(self.device)
                     t_vals = torch.round(t_vals).to(torch.long)
 
 
                 # Probability of class embeddings being the null embedding
                 if self.p_uncond != None:
-                    probs = torch.rand(self.batchSize)
+                    probs = torch.rand(batch_x_0.shape[0])
                     nullCls = torch.where(probs < self.p_uncond, 1, 0).to(torch.bool).to(self.device)
                 else:
                     nullCls = None
                 
 
                 # Noise the batch to time t
-                batch_x_t, epsilon_t = self.model.module.noise_batch(batch_x_0, t_vals)
+                with torch.no_grad():
+                    batch_x_t, epsilon_t = self.model.module.noise_batch(batch_x_0, t_vals)
                 
                 # Send the noised data through the model to get the
                 # predicted noise and variance for batch at t-1
@@ -412,15 +397,22 @@ class model_trainer():
                     self.optim.step()
                     self.optim.zero_grad()
 
-                    print(i, loss.cpu().detach())
+
+                # Save the model and graph every number of desired steps
+                if num_steps%self.numSaveSteps == 0:
+                    self.model.module.saveModel(self.saveDir, epoch)
+                    self.graph_losses()
 
             # Save the loss values
-            self.losses_comb = np.append(self.losses_comb, losses_comb_s.item())
-            self.losses_mean = np.append(self.losses_mean, losses_mean_s.item())
-            self.losses_var = np.append(self.losses_var, losses_var_s.item())
+            self.losses_comb = np.append(self.losses_comb, (losses_comb_s.item()*self.numSteps)/num_steps)
+            self.losses_mean = np.append(self.losses_mean, (losses_mean_s.item()*self.numSteps)/num_steps)
+            self.losses_var = np.append(self.losses_var, (losses_var_s.item()*self.numSteps)/num_steps)
             self.epochs_list = np.append(self.epochs_list, epoch)
             
-            print(f"Loss at epoch #{epoch}  Combined: {round(self.losses_comb[-10:].mean(), 4)}    Mean: {round(self.losses_mean[-10:].mean(), 4)}    Variance: {round(self.losses_var[-10:].mean(), 6)}")
+            print(f"Loss at epoch #{epoch}, step #{num_steps}, update #{num_steps/self.numSteps}\n"+\
+                    f"Combined: {round(self.losses_comb[-10:].mean(), 4)}    "\
+                    f"Mean: {round(self.losses_mean[-10:].mean(), 4)}    "\
+                    f"Variance: {round(self.losses_var[-10:].mean(), 6)}")
     
 
 
