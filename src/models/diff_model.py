@@ -80,14 +80,17 @@ class diff_model(nn.Module):
         if device.lower() == "gpu":
             if torch.cuda.is_available():
                 dev = device.lower()
-                local_rank = int(os.environ['LOCAL_RANK'])
+                try:
+                    local_rank = int(os.environ['LOCAL_RANK'])
+                except KeyError:
+                    local_rank = 0
                 device = torch.device(f"cuda:{local_rank}")
             else:
                 dev = "cpu"
                 print("GPU not available, defaulting to CPU. Please ignore this message if you do not wish to use a GPU\n")
                 device = torch.device('cpu')
         else:
-            dev = device.lower()
+            dev = "cpu"
             device = torch.device('cpu')
         self.device = device
         self.dev = dev

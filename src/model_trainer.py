@@ -101,16 +101,19 @@ class model_trainer():
                 print("GPU not available, defaulting to CPU. Please ignore this message if you do not wish to use a GPU\n")
                 device = torch.device('cpu')
         else:
-            dev = device.lower()
+            dev = "cpu"
             device = torch.device('cpu')
         self.device = device
         self.dev = dev
-
-        # Initialize the environment
-        init_distributed()
         
         # Put the model on the desired device
-        self.model = DDP(diff_model.cuda(), device_ids=[local_rank], find_unused_parameters=False)
+        if dev != "cpu":
+            # Initialize the environment
+            init_distributed()
+            
+            self.model = DDP(diff_model.cuda(), device_ids=[local_rank], find_unused_parameters=False)
+        else:
+            self.model = diff_model.cpu()
         # self.model.to(self.device)
             
         # Uniform distribution for values of t from [1:T]
@@ -213,19 +216,31 @@ class model_trainer():
         """
 
         # Get the mean and variance from the model
-        mean_t_pred = self.model.module.noise_to_mean(epsilon_pred, x_t, t, True)
-        var_t_pred = self.model.module.vs_to_variance(v, t)
+        if self.dev == "cpu":
+            mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t, True)
+            var_t_pred = self.model.vs_to_variance(v, t)
+        else:
+            mean_t_pred = self.model.module.noise_to_mean(epsilon_pred, x_t, t, True)
+            var_t_pred = self.model.module.vs_to_variance(v, t)
 
 
         ### Preparing for the real normal distribution
 
         # Get the scheduler information
-        beta_t = self.model.module.scheduler.sample_beta_t(t)
-        a_bar_t = self.model.module.scheduler.sample_a_bar_t(t)
-        a_bar_t1 = self.model.module.scheduler.sample_a_bar_t1(t)
-        beta_tilde_t = self.model.module.scheduler.sample_beta_tilde_t(t)
-        sqrt_a_bar_t1 = self.model.module.scheduler.sample_sqrt_a_bar_t1(t)
-        sqrt_a_t = self.model.module.scheduler.sample_sqrt_a_t(t)
+        if self.dev == "cpu":
+            beta_t = self.model.scheduler.sample_beta_t(t)
+            a_bar_t = self.model.scheduler.sample_a_bar_t(t)
+            a_bar_t1 = self.model.scheduler.sample_a_bar_t1(t)
+            beta_tilde_t = self.model.scheduler.sample_beta_tilde_t(t)
+            sqrt_a_bar_t1 = self.model.scheduler.sample_sqrt_a_bar_t1(t)
+            sqrt_a_t = self.model.scheduler.sample_sqrt_a_t(t)
+        else:
+            beta_t = self.model.module.scheduler.sample_beta_t(t)
+            a_bar_t = self.model.module.scheduler.sample_a_bar_t(t)
+            a_bar_t1 = self.model.module.scheduler.sample_a_bar_t1(t)
+            beta_tilde_t = self.model.module.scheduler.sample_beta_tilde_t(t)
+            sqrt_a_bar_t1 = self.model.module.scheduler.sample_sqrt_a_bar_t1(t)
+            sqrt_a_t = self.model.module.scheduler.sample_sqrt_a_t(t)
 
         # Get the true mean distribution
         mean_t = ((sqrt_a_bar_t1*beta_t)/(1-a_bar_t))*x_0 +\
@@ -273,20 +288,35 @@ class model_trainer():
     def train(self, data_path, num_data, cls_min, reshapeType):
 
         # Was class information given?
-        if self.model.module.c_emb is not None:
-            useCls = True
+        if self.dev == "cpu":
+            if self.model.c_emb is not None:
+                useCls = True
 
-            # Class assertion
-            assert self.p_uncond != None, "p_uncond cannot be None when using class information"
+                # Class assertion
+                assert self.p_uncond != None, "p_uncond cannot be None when using class information"
+            else:
+                useCls = False
         else:
-            useCls = False
+            if self.model.module.c_emb is not None:
+                useCls = True
+
+                # Class assertion
+                assert self.p_uncond != None, "p_uncond cannot be None when using class information"
+            else:
+                useCls = False
 
         # Put the model is train mode
         self.model.train()
 
         # Create a sampler and loader over the dataset
         dataset = CustomDataset(data_path, num_data, cls_min, scale=reshapeType)
-        data_loader = DataLoader(dataset, batch_size=self.batchSize,
+        if self.dev == "cpu":
+            data_loader = DataLoader(dataset, batch_size=self.batchSize,
+                pin_memory=True, num_workers=0, 
+                drop_last=False, shuffle=True
+            )
+        else:
+            data_loader = DataLoader(dataset, batch_size=self.batchSize,
             pin_memory=True, num_workers=0, 
             drop_last=False, sampler=
                 DistributedSampler(dataset, shuffle=True)
@@ -310,7 +340,8 @@ class model_trainer():
         for epoch in range(1, self.epochs+1):
             # Set the epoch number for the dataloader to seed the
             # randomization of the sampler
-            data_loader.sampler.set_epoch(epoch)
+            if self.dev != "cpu":
+                data_loader.sampler.set_epoch(epoch)
 
             # Iterate over all data
             for step, data in enumerate(data_loader):
@@ -345,7 +376,10 @@ class model_trainer():
 
                 # Noise the batch to time t
                 with torch.no_grad():
-                    batch_x_t, epsilon_t = self.model.module.noise_batch(batch_x_0, t_vals)
+                    if self.dev == "cpu":
+                        batch_x_t, epsilon_t = self.model.noise_batch(batch_x_0, t_vals)
+                    else:
+                        batch_x_t, epsilon_t = self.model.module.noise_batch(batch_x_0, t_vals)
                 
                 # Send the noised data through the model to get the
                 # predicted noise and variance for batch at t-1
@@ -397,7 +431,10 @@ class model_trainer():
 
                 # Save the model and graph every number of desired steps
                 if num_steps%self.numSaveSteps == 0 and is_main_process():
-                    self.model.module.saveModel(self.saveDir, epoch, num_steps)
+                    if self.dev == "cpu":
+                        self.model.saveModel(self.saveDir, epoch, num_steps)
+                    else:
+                        self.model.module.saveModel(self.saveDir, epoch, num_steps)
                     self.graph_losses()
 
                     print("Saving model")

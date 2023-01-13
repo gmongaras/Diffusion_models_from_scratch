@@ -62,6 +62,17 @@ https://arxiv.org/abs/2207.12598
 
 
 
+# Usage
+
+To run the train script, use the following command from the root directory:
+`torchrun --standalone --nnodes=1 --nproc_per_node=[num_gpus] src/train.py`
+- num_gpus - The number of gpus to split he model onto
+
+To run the infer script, use the following command from the root directory:
+`python -m src.infer`
+
+
+
 
 # Data
 ## ImageNet
