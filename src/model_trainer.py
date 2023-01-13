@@ -15,6 +15,11 @@ from CustomDataset import CustomDataset
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.dataloader import DataLoader
 
+try:
+    from helpers.multi_gpu_helpers import is_main_process
+except ModuleNotFoundError:
+    from .helpers.multi_gpu_helpers import is_main_process
+
 
 cpu = torch.device('cpu')
 
@@ -375,7 +380,8 @@ class model_trainer():
                     self.optim.step()
                     self.optim.zero_grad()
 
-                    print(f"step #{num_steps}   Latest loss estimate: {round(losses_comb_s.cpu().detach().item(), 6)}")
+                    if is_main_process():
+                        print(f"step #{num_steps}   Latest loss estimate: {round(losses_comb_s.cpu().detach().item(), 6)}")
 
                     # Save the loss values
                     self.losses_comb = np.append(self.losses_comb, losses_comb_s.item())
@@ -390,16 +396,17 @@ class model_trainer():
 
 
                 # Save the model and graph every number of desired steps
-                if num_steps%self.numSaveSteps == 0:
+                if num_steps%self.numSaveSteps == 0 and is_main_process():
                     self.model.module.saveModel(self.saveDir, epoch, num_steps)
                     self.graph_losses()
 
                     print("Saving model")
             
-            print(f"Loss at epoch #{epoch}, step #{num_steps}, update #{num_steps/self.numSteps}\n"+\
-                    f"Combined: {round(self.losses_comb[-10:].mean(), 4)}    "\
-                    f"Mean: {round(self.losses_mean[-10:].mean(), 4)}    "\
-                    f"Variance: {round(self.losses_var[-10:].mean(), 6)}\n\n")
+            if is_main_process():
+                print(f"Loss at epoch #{epoch}, step #{num_steps}, update #{num_steps/self.numSteps}\n"+\
+                        f"Combined: {round(self.losses_comb[-10:].mean(), 4)}    "\
+                        f"Mean: {round(self.losses_mean[-10:].mean(), 4)}    "\
+                        f"Variance: {round(self.losses_var[-10:].mean(), 6)}\n\n")
     
 
 

@@ -95,3 +95,6 @@ https://www.cs.toronto.edu/~kriz/cifar.html
 7. Where the BigGAN residual blocks comes from (Large Scale GAN Training for High Fidelity Natural Image Synthesis): https://arxiv.org/abs/1809.11096
 
 8. What are non-local blocks? (Non-local Neural Networks): https://arxiv.org/pdf/1711.07971.pdf
+
+Thanks to the following link for helping me multi-gpu the project!
+https://theaisummer.com/distributed-training-pytorch/
