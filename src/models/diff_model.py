@@ -80,7 +80,7 @@ class diff_model(nn.Module):
         if device.lower() == "gpu":
             if torch.cuda.is_available():
                 dev = device.lower()
-                local_rank = int(os.environ['LOCAL_RANK']))
+                local_rank = int(os.environ['LOCAL_RANK'])
                 device = torch.device(f"cuda:{local_rank}")
             else:
                 dev = "cpu"
