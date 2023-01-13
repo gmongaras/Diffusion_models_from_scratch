@@ -298,7 +298,7 @@ class diff_model(nn.Module):
     # Given a batch of images, unoise them using the current models's state
     # Inputs:
     #   x_t - Batch of images at the given value of t of shape (N, C, L, W)
-    #   t - Batch of t values of shape (N) or a single t value
+    #   t - Batch of DDIM t values of shape (N) or a single t value
     #   class_label - (optional and only used if the model uses class info) 
     #                 Class we want the model to generate
     #                 Use -1 to generate without a class
@@ -397,11 +397,11 @@ class diff_model(nn.Module):
         var_t = self.DDIM_scale*var_t
         beta_tilde_t = self.DDIM_scale*beta_tilde_t
 
-        # Sometimes the noise blows up. Since the noise prediction should follow a normal
-        # distribution, sample a normal distribution of the same shape and restrict the
-        # predicted noise to the min and max of that distribution.
-        samp = torch.randn_like(noise_t)
-        noise_t = noise_t.clamp(samp.min(), samp.max())
+        # # Sometimes the noise blows up. Since the noise prediction should follow a normal
+        # # distribution, sample a normal distribution of the same shape and restrict the
+        # # predicted noise to the min and max of that distribution.
+        # samp = torch.randn_like(noise_t)
+        # noise_t = noise_t.clamp(samp.min(), samp.max())
 
         # Get the x_0 and x_t_dir predictions. Note that the
         # x_t direction prediction uses the beta_tilde_t value
@@ -462,8 +462,8 @@ class diff_model(nn.Module):
 
         # Iterate T//step_size times to denoise the images (sampling from [T:1])
         imgs = []
-        for t in tqdm(range(self.T, 0, -self.step_size)) if use_tqdm else range(self.T, 0, -self.step_size):
-            output = self.unnoise_batch(output, (t//self.step_size)-1, class_label, w, corrected)
+        for t in tqdm(reversed(range(1, self.T, self.step_size)), total=len(list(reversed(range(1, self.T, self.step_size))))) if use_tqdm else reversed(range(1, self.T, self.step_size)):
+            output = self.unnoise_batch(output, (t//self.step_size)+1, class_label, w, corrected)
             if save_intermediate:
                 imgs.append(unreduce_image(output[0]).cpu().detach().int().clamp(0, 255).permute(1, 2, 0))
         
