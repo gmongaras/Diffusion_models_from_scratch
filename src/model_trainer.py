@@ -17,7 +17,6 @@ from torch.utils.data.dataloader import DataLoader
 
 
 cpu = torch.device('cpu')
-gpu = torch.device('cuda:0')
 
 
 
@@ -90,7 +89,8 @@ class model_trainer():
         if device.lower() == "gpu":
             if torch.cuda.is_available():
                 dev = device.lower()
-                device = torch.device('cuda:0')
+                local_rank = int(os.environ['LOCAL_RANK']) if max_world_size is None else min(int(os.environ['LOCAL_RANK']), max_world_size)
+                device = torch.device(f"cuda:{local_rank}")
             else:
                 dev = "cpu"
                 print("GPU not available, defaulting to CPU. Please ignore this message if you do not wish to use a GPU\n")
@@ -105,8 +105,7 @@ class model_trainer():
         init_distributed()
         
         # Put the model on the desired device
-        local_rank = int(os.environ['LOCAL_RANK']) if max_world_size is None else min(int(os.environ['LOCAL_RANK']), max_world_size)
-        self.model = DDP(diff_model, device_ids=[local_rank], find_unused_parameters=False)
+        self.model = DDP(diff_model.cuda(), device_ids=[local_rank], find_unused_parameters=False)
         # self.model.to(self.device)
             
         # Uniform distribution for values of t from [1:T]

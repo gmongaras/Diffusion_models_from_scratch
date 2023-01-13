@@ -80,7 +80,8 @@ class diff_model(nn.Module):
         if device.lower() == "gpu":
             if torch.cuda.is_available():
                 dev = device.lower()
-                device = torch.device('cuda:0')
+                local_rank = int(os.environ['LOCAL_RANK']))
+                device = torch.device(f"cuda:{local_rank}")
             else:
                 dev = "cpu"
                 print("GPU not available, defaulting to CPU. Please ignore this message if you do not wish to use a GPU\n")
@@ -215,7 +216,8 @@ class diff_model(nn.Module):
         
     # Input:
     #   x_t - Batch of images of shape (B, C, L, W)
-    #   t - Batch of t values of shape (N) or a single t value
+    #   t - Batch of t values of shape (N) or a single t value. Note
+    #       that this t value represents the timestep the model is currently at.
     #   c - (Optional) Batch of c values of shape (N)
     #   nullCls - (Optional) Binary tensor of shape (N) where a 1 represents a null class
     # Outputs:
@@ -336,8 +338,15 @@ class diff_model(nn.Module):
 
         # t is currently in DDIM state. Convert it to DDPM state
         # which is what the model's trained on to get the
-        # correct noise and v prediction.
-        t_enc = t*self.step_size + 1
+        # correct noise and v prediction. Note that we want the model
+        # to think it is at a single timestep before the timestep it generates
+        # rather than the current timestep it is actually at. So if a step
+        # is 20 and T is 1000, the first step starts at 981 rather than
+        # 1000 to make the model think it needs to generate an image
+        # from 981 to 981 rather than from 1000 to 999. So the last step
+        # should be t=1 meaning it generates iamges from t=1 -> t=0. Note that the model
+        # is conditioned on the timestep it is currently at, so this works.
+        t_enc = (t-1)*self.step_size+1
         
 
 
@@ -462,8 +471,8 @@ class diff_model(nn.Module):
 
         # Iterate T//step_size times to denoise the images (sampling from [T:1])
         imgs = []
-        for t in tqdm(reversed(range(1, self.T, self.step_size)), total=len(list(reversed(range(1, self.T, self.step_size))))) if use_tqdm else reversed(range(1, self.T, self.step_size)):
-            output = self.unnoise_batch(output, (t//self.step_size)+1, class_label, w, corrected)
+        for t in tqdm(reversed(range(1, self.T+1, self.step_size)), total=len(list(reversed(range(1, self.T+1, self.step_size))))) if use_tqdm else reversed(range(1, self.T+1, self.step_size)):
+            output = self.unnoise_batch(output, t//self.step_size + t%self.step_size, class_label, w, corrected)
             if save_intermediate:
                 imgs.append(unreduce_image(output[0]).cpu().detach().int().clamp(0, 255).permute(1, 2, 0))
         
