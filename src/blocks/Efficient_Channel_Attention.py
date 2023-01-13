@@ -22,8 +22,12 @@ class Efficient_Channel_Attention(nn.Module):
         k = int(abs((math.log2(channels)/gamma)+(b/gamma)))
         k = k if k % 2 else k + 1
 
-        # Create the convolution layer using the kernel size
-        self.conv = nn.Conv1d(1, 1, k, padding=k//2, bias=False)
+        # Create the convolution layer using the kernel size. Note:
+        # not using Conv1d as it causes a warning message
+        # "Grad strides do not match bucket view strides"
+        # which I couldn't fix, but changing it to a conv2d
+        # is the same operation, but doesn't cause the warning
+        self.conv = nn.Conv2d(1, 1, [1, k], padding=[0, k//2], bias=False)
 
         # Pooling and sigmoid functions
         self.avgPool = nn.AdaptiveAvgPool2d(1)
@@ -37,23 +41,20 @@ class Efficient_Channel_Attention(nn.Module):
     # Outputs:
     #   Image tensor of shape (N, C, L, W)
     def forward(self, X):
-        # Save the input tensor as a residual
-        res = X.clone()
-
         # Pool the input tensor to a (N, C, 1, 1) tensor
-        X = self.avgPool(X)
+        att = self.avgPool(X)
 
-        # Reshape the input tensor to be of shape (N, 1, C)
-        X = X.squeeze(-1).permute(0, 2, 1)
+        # Reshape the input tensor to be of shape (N, 1, 1, C)
+        att = att.permute(0, 2, 3, 1)
 
         # Compute the channel attention
-        X = self.conv(X)
+        att = self.conv(att)
 
         # Apply the sigmoid function to the channel attention
-        X = self.sigmoid(X)
+        att = self.sigmoid(att)
 
         # Reshape the input tensor to be of shape (N, C, 1, 1)
-        X = X.permute(0, 2, 1).unsqueeze(-1)
+        att = att.permute(0, 3, 1, 2)
 
         # Scale the input by the attention
-        return res * X
+        return X * att.expand_as(X)

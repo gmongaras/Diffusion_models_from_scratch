@@ -13,14 +13,14 @@ def train():
     
     ## Model params
     inCh = 3
-    embCh = 128
+    embCh = 192
     chMult = 1
-    num_res_blocks = 4
-    T = 4000
+    num_res_blocks = 3
+    T = 1000
     Lambda = 0.001
     beta_sched = "cosine"
     batchSize = 120
-    numSteps = 3            # Number of steps to breakup the batchSize into. Instead
+    numSteps = 4            # Number of steps to breakup the batchSize into. Instead
                             # of taking 1 massive step where the whole batch is loaded into
                             # memory, the batchSize is broken up into sizes of
                             # batchSize//numSteps so that it can fit into memory. Mathematically,
@@ -28,7 +28,7 @@ def train():
                             # the update is distributed across smaller updates to fit into memory
     device = "gpu"
     epochs = 1000000
-    lr = 0.0002
+    lr = 3e-4
     t_dim = 512
     c_dim = 512             # Embedding dimension for class info (use None to not use class info)
     p_uncond = 0.2          # Probability of training on a null class (only used if c_dim is not None)

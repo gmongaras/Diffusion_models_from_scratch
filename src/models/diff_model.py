@@ -6,12 +6,17 @@ sys.path.append('../blocks')
 import torch
 from torch import nn
 from .U_Net import U_Net
-from helpers.image_rescale import reduce_image, unreduce_image
-from blocks.PositionalEncoding import PositionalEncoding
+try:
+    from helpers.image_rescale import reduce_image, unreduce_image
+    from blocks.PositionalEncoding import PositionalEncoding
+    from blocks.convNext import convNext
+except ModuleNotFoundError:
+    from ..helpers.image_rescale import reduce_image, unreduce_image
+    from ..blocks.PositionalEncoding import PositionalEncoding
+    from ..blocks.convNext import convNext
 import os
 import json
 import threading
-from blocks.convNext import convNext
 from .Variance_Scheduler import DDIM_Scheduler
 from tqdm import tqdm
 
@@ -241,15 +246,13 @@ class diff_model(nn.Module):
             # Encode the timesteps
             if len(t.shape) == 1:
                 t = self.t_emb(t)
-        
-
-        # One hot encode the class embeddings
-        if self.num_classes != None:
-            c = torch.nn.functional.one_hot(c.to(torch.int64), self.num_classes).to(self.device).to(torch.float)
 
 
         # Embed the class info
         if type(c) != type(None):
+            # One hot encode the class embeddings
+            c = torch.nn.functional.one_hot(c.to(torch.int64), self.num_classes).to(self.device).to(torch.float)
+
             c = self.c_emb(c)
 
             # Apply the null embeddings (zeros)
@@ -457,7 +460,7 @@ class diff_model(nn.Module):
         # The initial image is pure noise
         output = torch.randn((batchSize, 3, 64, 64)).to(self.device)
 
-        # Iterate T//step_size times to denoise the images
+        # Iterate T//step_size times to denoise the images (sampling from [T:1])
         imgs = []
         for t in tqdm(range(self.T, 0, -self.step_size)) if use_tqdm else range(self.T, 0, -self.step_size):
             output = self.unnoise_batch(output, (t//self.step_size)-1, class_label, w, corrected)
@@ -472,13 +475,19 @@ class diff_model(nn.Module):
 
 
     
-    def saveModel_T(self, saveDir, epoch=None):
+    # Save the model
+    def saveModel(self, saveDir, epoch=None, step=None):
+        # Craft the save string
+        saveFile = "model"
+        saveDefFile = "model_params"
         if epoch:
-            saveFile = f"model_{epoch}.pkl"
-            saveDefFile = f"model_params_{epoch}.json"
-        else:
-            saveFile = "model.pkl"
-            saveDefFile = "model_params.json"
+            saveFile += f"_{epoch}e"
+            saveDefFile += f"_{epoch}e"
+        if step:
+            saveFile += f"_{step}s"
+            saveDefFile += f"_{step}s"
+        saveFile += ".pkl"
+        saveDefFile += ".json"
         
         # Check if the directory exists. If it doesn't
         # create it
@@ -491,12 +500,6 @@ class diff_model(nn.Module):
         # Save the defaults
         with open(saveDir + os.sep + saveDefFile, "w") as f:
             json.dump(self.defaults, f)
-    
-    # Save the model
-    def saveModel(self, saveDir, epoch=None):
-        # Async saving
-        thr = threading.Thread(target=self.saveModel_T, args=(saveDir, epoch), kwargs={})
-        thr.start()
     
     
     # Load the model

@@ -4,16 +4,28 @@ sys.path.append('../blocks')
 
 import torch
 from torch import nn
-from blocks.BigGAN_ResDown import BigGAN_ResDown
-from blocks.BigGAN_ResUp import BigGAN_ResUp
-from blocks.BigGAN_Res import BigGAN_Res
-from blocks.BigGAN_ResDown_Deep import BigGAN_ResDown_Deep
-from blocks.BigGAN_ResUp_Deep import BigGAN_ResUp_Deep
-from blocks.BigGAN_Res_Deep import BigGAN_Res_Deep
-from blocks.Non_local_MH import Non_local_MH
-from blocks.resBlock import resBlock
-from blocks.convNext import convNext
-from blocks.Efficient_Channel_Attention import Efficient_Channel_Attention
+try:
+    from blocks.BigGAN_ResDown import BigGAN_ResDown
+    from blocks.BigGAN_ResUp import BigGAN_ResUp
+    from blocks.BigGAN_Res import BigGAN_Res
+    from blocks.BigGAN_ResDown_Deep import BigGAN_ResDown_Deep
+    from blocks.BigGAN_ResUp_Deep import BigGAN_ResUp_Deep
+    from blocks.BigGAN_Res_Deep import BigGAN_Res_Deep
+    from blocks.Non_local_MH import Non_local_MH
+    from blocks.resBlock import resBlock
+    from blocks.convNext import convNext
+    from blocks.Efficient_Channel_Attention import Efficient_Channel_Attention
+except ModuleNotFoundError:
+    from ..blocks.BigGAN_ResDown import BigGAN_ResDown
+    from ..blocks.BigGAN_ResUp import BigGAN_ResUp
+    from ..blocks.BigGAN_Res import BigGAN_Res
+    from ..blocks.BigGAN_ResDown_Deep import BigGAN_ResDown_Deep
+    from ..blocks.BigGAN_ResUp_Deep import BigGAN_ResUp_Deep
+    from ..blocks.BigGAN_Res_Deep import BigGAN_Res_Deep
+    from ..blocks.Non_local_MH import Non_local_MH
+    from ..blocks.resBlock import resBlock
+    from ..blocks.convNext import convNext
+    from ..blocks.Efficient_Channel_Attention import Efficient_Channel_Attention
 
 
 

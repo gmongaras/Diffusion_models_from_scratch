@@ -41,6 +41,11 @@ def compute_model_stats():
     var_filename = "fake_var_190K.npy"
 
 
+    assert 1==2, "I am purposely raising this error for the future. The images need to"\
+                 "be scaled between 0 and 1 and reduced in a specific way as found here:"\
+                 "https://pytorch.org/hub/pytorch_vision_inception_v3/"
+
+
 
 
 

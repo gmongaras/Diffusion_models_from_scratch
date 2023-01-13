@@ -106,12 +106,12 @@ class model_trainer():
         
         # Put the model on the desired device
         local_rank = int(os.environ['LOCAL_RANK']) if max_world_size is None else min(int(os.environ['LOCAL_RANK']), max_world_size)
-        self.model = DDP(diff_model, device_ids=[local_rank], find_unused_parameters=True)
+        self.model = DDP(diff_model, device_ids=[local_rank], find_unused_parameters=False)
         # self.model.to(self.device)
             
-        # Uniform distribution for values of t
-        self.t_vals = np.arange(0, self.T.detach().cpu().numpy())
-        self.T_dist = torch.distributions.uniform.Uniform(float(1)-float(0.499), float(self.T-1)+float(0.499))
+        # Uniform distribution for values of t from [1:T]
+        self.t_vals = np.arange(1, self.T.detach().cpu().numpy()+1)
+        self.T_dist = torch.distributions.uniform.Uniform(float(1)-float(0.499), float(self.T)+float(0.499))
         
         # Optimizer
         self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr, eps=1e-4)
@@ -155,20 +155,6 @@ class model_trainer():
         return ((epsilon_pred - epsilon)**2).flatten(1, -1).mean(-1)
 
 
-    # KL Divergence loss
-    # Inputs:
-    #   y_true - Distribution we want the model to predict
-    #   y_pred - Predicted distribution the model predicted
-    # Outputs:
-    #   Vector batch of the KL divergence lossed between the 2 distribution
-    def KLDivergence(self, y_true, y_pred):
-        # Handling small values
-        y_true = torch.where(y_true < 1e-5, y_true+1e-5, y_true)
-        y_pred = torch.where(y_pred < 1e-5, y_pred+1e-5, y_pred)
-        return (y_true*(y_true.log() - y_pred.log())).flatten(1, -1).mean(-1)
-
-        
-    
     # Variational Lower Bound loss function which computes the
     # KL divergence between two gaussians
     # Formula derived from: https://stats.stackexchange.com/questions/7440/kl-divergence-between-two-univariate-gaussians
@@ -178,10 +164,9 @@ class model_trainer():
     #   mean_fake - Mean of the predicted distribution of shape (N, C, L, W)
     #   var_real - Variance of the real distribution of shape (N, C, L, W)
     #   var_fake - Variance of the predicted distribution of shape (N, C, L, W)
-    #   x_0 - The unoised image at time t = 0 of shape (N, C, L, W)
     # Outputs:
     #   Loss vector for each part of the entire batch
-    def loss_vlb_gauss(self, t, mean_real, mean_fake, var_real, var_fake, x_0):
+    def loss_vlb_gauss(self, t, mean_real, mean_fake, var_real, var_fake):
         std_real = torch.sqrt(var_real)
         std_fake = torch.sqrt(var_fake)
 
@@ -192,12 +177,6 @@ class model_trainer():
             + ((var_real) + (mean_real-mean_fake)**2)/(2*(var_fake)) \
             - torch.tensor(1/2))\
             .flatten(1,-1).mean(-1)
-        
-        # Replace where t = 1
-        output = torch.where(t == 1,
-            -torch.distributions.Normal(mean_fake, std_fake).log_prob(x_0).flatten(1,-1).mean(-1),
-            output
-        )
 
         return output
     
@@ -250,7 +229,7 @@ class model_trainer():
         
         # Get the losses
         loss_simple = self.loss_simple(epsilon, epsilon_pred)
-        loss_vlb = self.loss_vlb_gauss(t, mean_t, mean_t_pred.detach(), beta_tilde_t, var_t_pred, x_0)*self.Lambda
+        loss_vlb = self.loss_vlb_gauss(t, mean_t, mean_t_pred.detach(), beta_tilde_t, var_t_pred)*self.Lambda
 
         # Get the combined loss
         loss_comb = loss_simple + loss_vlb
@@ -313,10 +292,15 @@ class model_trainer():
         self.losses_comb = np.array([])
         self.losses_mean = np.array([])
         self.losses_var = np.array([])
-        self.epochs_list = np.array([])
+        self.steps_list = np.array([])
 
         # Number of steps taken
         num_steps = 0
+
+        # Cumulative loss over the batch over each set of steps
+        losses_comb_s = torch.tensor(0.0, requires_grad=False)
+        losses_mean_s = torch.tensor(0.0, requires_grad=False)
+        losses_var_s = torch.tensor(0.0, requires_grad=False)
         
         # Iterate over the desiered number of epochs
         for epoch in range(1, self.epochs+1):
@@ -324,13 +308,8 @@ class model_trainer():
             # randomization of the sampler
             data_loader.sampler.set_epoch(epoch)
 
-            # Cumulative loss over the batch over all steps
-            losses_comb_s = torch.tensor(0.0, requires_grad=False)
-            losses_mean_s = torch.tensor(0.0, requires_grad=False)
-            losses_var_s = torch.tensor(0.0, requires_grad=False)
-
             # Iterate over all data
-            for i, data in enumerate(data_loader):
+            for step, data in enumerate(data_loader):
                 batch_x_0, batch_class = data
                 
                 # Increate the number of steps taken
@@ -368,7 +347,7 @@ class model_trainer():
                 # predicted noise and variance for batch at t-1
                 epsilon_t1_pred, v_t1_pred = self.model(batch_x_t, t_vals, 
                     batch_class if useCls else None, nullCls)
-                
+
                 # Get the loss
                 loss, loss_mean, loss_var = self.lossFunct(epsilon_t, epsilon_t1_pred, v_t1_pred, 
                                     batch_x_0, batch_x_t, t_vals)
@@ -397,42 +376,46 @@ class model_trainer():
                     self.optim.step()
                     self.optim.zero_grad()
 
+                    print(f"step #{num_steps}   Latest loss estimate: {round(losses_comb_s.cpu().detach().item(), 6)}")
+
+                    # Save the loss values
+                    self.losses_comb = np.append(self.losses_comb, losses_comb_s.item())
+                    self.losses_mean = np.append(self.losses_mean, losses_mean_s.item())
+                    self.losses_var = np.append(self.losses_var, losses_var_s.item())
+                    self.steps_list = np.append(self.steps_list, num_steps)
+
+                    # Reset the cumulative step loss
+                    losses_comb_s *= 0
+                    losses_mean_s *= 0
+                    losses_var_s *= 0
+
 
                 # Save the model and graph every number of desired steps
                 if num_steps%self.numSaveSteps == 0:
-                    self.model.module.saveModel(self.saveDir, epoch)
+                    self.model.module.saveModel(self.saveDir, epoch, num_steps)
                     self.graph_losses()
 
-            # Save the loss values
-            self.losses_comb = np.append(self.losses_comb, (losses_comb_s.item()*self.numSteps)/num_steps)
-            self.losses_mean = np.append(self.losses_mean, (losses_mean_s.item()*self.numSteps)/num_steps)
-            self.losses_var = np.append(self.losses_var, (losses_var_s.item()*self.numSteps)/num_steps)
-            self.epochs_list = np.append(self.epochs_list, epoch)
+                    print("Saving model")
             
             print(f"Loss at epoch #{epoch}, step #{num_steps}, update #{num_steps/self.numSteps}\n"+\
                     f"Combined: {round(self.losses_comb[-10:].mean(), 4)}    "\
                     f"Mean: {round(self.losses_mean[-10:].mean(), 4)}    "\
-                    f"Variance: {round(self.losses_var[-10:].mean(), 6)}")
+                    f"Variance: {round(self.losses_var[-10:].mean(), 6)}\n\n")
     
 
 
 
-    # Graph losses function for a thread
-    def graph_losses_helper(self, fig, ax):
+    # Graph the losses through training
+    def graph_losses(self):
+        plt.clf()
+        fig, ax = plt.subplots()
+
         ax.set_title("Losses over epochs")
         ax.set_ylabel("Loss")
-        ax.set_xlabel("Epoch")
+        ax.set_xlabel("Step")
         # ax.plot(self.epochs_list, self.losses_comb, label="Combined loss")
-        ax.plot(self.epochs_list, self.losses_mean, label="Mean loss")
+        ax.plot(self.steps_list, self.losses_mean, label="Mean loss")
         # ax.plot(self.epochs_list, self.losses_var, label="Variance loss")
         ax.legend()
         fig.savefig(self.saveDir + os.sep + "lossGraph.png", format="png")
         plt.close(fig)
-
-    # Graph the losses through training
-    def graph_losses(self):
-        # Async saving
-        plt.clf()
-        fig, ax = plt.subplots()
-        thr = threading.Thread(target=self.graph_losses_helper, args=(fig, ax))
-        thr.start()
