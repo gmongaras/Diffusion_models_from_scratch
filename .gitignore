@@ -9,6 +9,7 @@ eval/saved_stats/*
 !.gitignore
 !models/README.md
 !data/README.md
+!data/loadImagenet64.py
 
 
 # Byte-compiled / optimized / DLL files
