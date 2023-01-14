@@ -303,7 +303,10 @@ class diff_model(nn.Module):
     # Given a batch of images, unoise them using the current models's state
     # Inputs:
     #   x_t - Batch of images at the given value of t of shape (N, C, L, W)
-    #   t - Batch of DDIM t values of shape (N) or a single t value
+    #   t_DDIM - Batch of DDIM t values of shape (N) or a single t value
+    #            DDIM t values are in the range [1:T//step_size]
+    #   t_DDPM - Batch of DDPM t values of shape (N) or a single t value
+    #            DDPM t values are in the range [1:T]
     #   class_label - (optional and only used if the model uses class info) 
     #                 Class we want the model to generate
     #                 Use -1 to generate without a class
@@ -312,7 +315,19 @@ class diff_model(nn.Module):
     #   corrected - True to put a limit on generation. False to not restrain generation
     # Outputs:
     #   Image of shape (N, C, L, W) at timestep t-1, unnoised by one timestep
-    def unnoise_batch(self, x_t, t, class_label=-1, w=0.0, corrected=False):
+    def unnoise_batch(self, x_t, t_DDIM, t_DDPM, class_label=-1, w=0.0, corrected=False):
+        # The model is trained on the DDPM scale while the scheduler
+        # uses the DDIM scale as indices. Note that we want the model
+        # to think it is at a single timestep before the timestep it generates
+        # rather than the current timestep it is actually at. So if a step
+        # is 20 and T is 1000, the first step starts at 981 rather than
+        # 1000 to make the model think it needs to generate an image
+        # from 981 to 981 rather than from 1000 to 999. So the last step
+        # should be t=1 meaning it generates iamges from t=1 -> t=0. Note that the model
+        # is conditioned on the timestep it is currently at, so this works.
+        
+        
+        
         # w assertion
         assert w >= 0.0, "The value of w (classifier guidance factor) cannot be less than 0."
 
@@ -325,31 +340,30 @@ class diff_model(nn.Module):
         self.eval()
         
         # Make sure t is in the correct form
-        if type(t) == int or type(t) == float:
-            t = torch.tensor(t).repeat(x_t.shape[0]).to(torch.long)
-        elif type(t) == list and type(t[0]) == int:
-            t = torch.tensor(t).to(torch.long)
-        elif type(t) == torch.Tensor:
-            if len(t.shape) == 0:
-                t = t.repeat(x_t.shape[0]).to(torch.long)
+        if type(t_DDPM) == int or type(t_DDPM) == float:
+            t_DDPM = torch.tensor(t_DDPM).repeat(x_t.shape[0]).to(torch.long)
+        elif type(t_DDPM) == list and type(t_DDPM[0]) == int:
+            t_DDPM = torch.tensor(t_DDPM).to(torch.long)
+        elif type(t_DDPM) == torch.Tensor:
+            if len(t_DDPM.shape) == 0:
+                t_DDPM = t_DDPM.repeat(x_t.shape[0]).to(torch.long)
         else:
-            print(f"t values must either be a scalar, list of scalars, or a tensor of scalars, not type: {type(t)}")
+            print(f"t_DDPM values must either be a scalar, list of scalars, or a tensor of scalars, not type: {type(t_DDPM)}")
+            return
+        if type(t_DDIM) == int or type(t_DDIM) == float:
+            t_DDIM = torch.tensor(t_DDIM).repeat(x_t.shape[0]).to(torch.long)
+        elif type(t_DDIM) == list and type(t_DDIM[0]) == int:
+            t_DDIM = torch.tensor(t_DDIM).to(torch.long)
+        elif type(t_DDIM) == torch.Tensor:
+            if len(t_DDIM.shape) == 0:
+                t_DDIM = t_DDIM.repeat(x_t.shape[0]).to(torch.long)
+        else:
+            print(f"t_DDIM values must either be a scalar, list of scalars, or a tensor of scalars, not type: {type(t_DDIM)}")
             return
         
         x_t = x_t.to(self.device)
-        t = t.to(self.device)
-
-        # t is currently in DDIM state. Convert it to DDPM state
-        # which is what the model's trained on to get the
-        # correct noise and v prediction. Note that we want the model
-        # to think it is at a single timestep before the timestep it generates
-        # rather than the current timestep it is actually at. So if a step
-        # is 20 and T is 1000, the first step starts at 981 rather than
-        # 1000 to make the model think it needs to generate an image
-        # from 981 to 981 rather than from 1000 to 999. So the last step
-        # should be t=1 meaning it generates iamges from t=1 -> t=0. Note that the model
-        # is conditioned on the timestep it is currently at, so this works.
-        t_enc = (t-1)*self.step_size+1
+        t_DDPM = t_DDPM.to(self.device)
+        t_DDIM = t_DDIM.to(self.device)
         
 
 
@@ -358,7 +372,7 @@ class diff_model(nn.Module):
         # If the number of classes is not defined, the model
         # is not a conditioned model.
         if self.num_classes == None:
-            noise_t, v_t = self.forward(x_t, t_enc)
+            noise_t, v_t = self.forward(x_t, t_DDPM)
 
         # If the number of classes is defined, the model is a
         # conditioned model
@@ -366,7 +380,7 @@ class diff_model(nn.Module):
             # If the class label is -1, we only want the
             # unconditioned data
             if class_label == -1:
-                noise_t, v_t = self.forward(x_t, t_enc, torch.tensor([0]), torch.tensor([1]))
+                noise_t, v_t = self.forward(x_t, t_DDPM, torch.tensor([0]), torch.tensor([1]))
 
             # If the class label is not -1, we want both
             # the conditioned and unconditioned data
@@ -375,17 +389,17 @@ class diff_model(nn.Module):
                 if w == 0:
                     noise_t_un = v_t_un = 0
                 else:
-                    noise_t_un, v_t_un = self.forward(x_t, t_enc, torch.tensor([0]), torch.tensor([1]))
+                    noise_t_un, v_t_un = self.forward(x_t, t_DDPM, torch.tensor([0]), torch.tensor([1]))
                 
                 # Conditional sample
-                noise_t_cond, v_t_cond = self.forward(x_t, t_enc, torch.tensor([class_label]), torch.tensor([0]))
+                noise_t_cond, v_t_cond = self.forward(x_t, t_DDPM, torch.tensor([class_label]), torch.tensor([0]))
 
                 # Mixed sample between unconditioned and conditioned
                 noise_t = (1+w)*noise_t_cond - w*noise_t_un
                 v_t = (1+w)*v_t_cond - w*v_t_un
 
         # Convert the v prediction variance
-        var_t = self.vs_to_variance(v_t, t)
+        var_t = self.vs_to_variance(v_t, t_DDIM)
 
 
 
@@ -394,11 +408,11 @@ class diff_model(nn.Module):
 
         # Variance for a DDPM to a DDIM
         # Get the beta and a values for the batch of t values
-        sqrt_a_bar_t = self.scheduler.sample_sqrt_a_bar_t(t)
-        sqrt_1_minus_a_bar_t = self.scheduler.sample_sqrt_1_minus_a_bar_t(t)
-        a_bar_t1 = self.scheduler.sample_a_bar_t1(t)
-        sqrt_a_bar_t1 = self.scheduler.sample_sqrt_a_bar_t1(t)
-        beta_tilde_t = self.scheduler.sample_beta_tilde_t(t)
+        sqrt_a_bar_t = self.scheduler.sample_sqrt_a_bar_t(t_DDIM)
+        sqrt_1_minus_a_bar_t = self.scheduler.sample_sqrt_1_minus_a_bar_t(t_DDIM)
+        a_bar_t1 = self.scheduler.sample_a_bar_t1(t_DDIM)
+        sqrt_a_bar_t1 = self.scheduler.sample_sqrt_a_bar_t1(t_DDIM)
+        beta_tilde_t = self.scheduler.sample_beta_tilde_t(t_DDIM)
 
 
 
@@ -474,11 +488,16 @@ class diff_model(nn.Module):
 
         # Iterate T//step_size times to denoise the images (sampling from [T:1])
         imgs = []
-        for t in tqdm(reversed(range(1, self.T+1, self.step_size)), total=len(list(reversed(range(1, self.T+1, self.step_size))))) if use_tqdm else reversed(range(1, self.T+1, self.step_size)):
-            output = self.unnoise_batch(output, t//self.step_size + t%self.step_size, class_label, w, corrected)
+        num_steps = len(list(reversed(range(1, self.T+1, self.step_size))))
+        for t_DDIM, t_DDPM in tqdm(zip(reversed(range(1, num_steps+1)), reversed(range(1, self.T+1, self.step_size))), total=num_steps) \
+            if use_tqdm else zip(reversed(range(1, num_steps+1)), reversed(range(1, self.T+1, self.step_size))):
+
+            # Unoise by 1 step according to the DDIM and DDPM scheduler
+            output = self.unnoise_batch(output, t_DDIM, t_DDPM, class_label, w, corrected)
             if save_intermediate:
                 imgs.append(unreduce_image(output[0]).cpu().detach().int().clamp(0, 255).permute(1, 2, 0))
         
+        # Unreduce the image from [-1:1] to [0:255]
         if unreduce:
             output = unreduce_image(output).clamp(0, 255)
 

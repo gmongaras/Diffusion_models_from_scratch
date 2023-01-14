@@ -17,10 +17,7 @@ class DDIM_Scheduler():
         self.device = device
 
         # Linspace for all values of t as integers
-        t_vals = torch.linspace(1, T, T).to(torch.int)
-
-        # T value subsequence
-        t_vals = t_vals[::step]
+        t_vals = torch.arange(1, T+1, step).to(torch.int)
 
         # What scheduler should be used to add noise
         # to the data? For this scheduler, define

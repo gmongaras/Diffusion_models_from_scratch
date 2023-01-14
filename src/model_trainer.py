@@ -110,7 +110,7 @@ class model_trainer():
         if dev != "cpu":
             # Initialize the environment
             init_distributed()
-            
+
             self.model = DDP(diff_model.cuda(), device_ids=[local_rank], find_unused_parameters=False)
         else:
             self.model = diff_model.cpu()

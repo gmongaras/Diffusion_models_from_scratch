@@ -1,5 +1,4 @@
 from torch import nn
-from .ConditionalBatchNorm2D import ConditionalBatchNorm2d
 
 
 
@@ -9,13 +8,10 @@ class BigGAN_ResUp(nn.Module):
     # Inputs:
     #   inCh - Number of channels the input batch has
     #   outCh - Number of chanels the ouput batch should have
-    #   useCls - Should class conditioning be used?
-    #   cls_dim - Number of dimensions in the class token input
-    def __init__(self, inCh, outCh, useCls=False, cls_dim=None):
+    #   t_dim - (optional) Number of dimensions in the time input embedding
+    #   dropoutRate - Rate to apply dropout to each layer in the block
+    def __init__(self, inCh, outCh, t_dim=None, dropout=0.0):
         super(BigGAN_ResUp, self).__init__()
-        
-        if useCls == True:
-            assert cls_dim != None, "Class dimenion must be supplied if the use of a class token is True"
         
         # Residual connection
         self.Res = nn.Sequential(
@@ -24,42 +20,41 @@ class BigGAN_ResUp(nn.Module):
         )
         
         # Main Upsample flow (N, inCh, L, W) -> (N, outCh, 2L, 2W)
-        self.BN1 = nn.GroupNorm(4, inCh)                         # (N, inCh, L, W)
+        self.BN1 = nn.GroupNorm(inCh//4 if inCh > 4 else 1, inCh)                         # (N, inCh, L, W)
         self.Act1 = nn.GELU()                                   # (N, inCh, L, W)
         self.Up = nn.Upsample(scale_factor=2)                   # (N, inCh, 2L, 2W)
         self.Conv1 = nn.Conv2d(inCh, outCh, 3, padding=1)       # (N, outCh, 2L, 2W)
-        self.BN2 = nn.GroupNorm(4, outCh)                        # (N, outCh, 2L, 2W)
+        self.BN2 = nn.GroupNorm(inCh//4 if inCh > 4 else 1, outCh)                        # (N, outCh, 2L, 2W)
         self.Act2 = nn.GELU()                                   # (N, outCh, 2L, 2W)
         self.Conv2 = nn.Conv2d(outCh, outCh, 3, padding=1)      # (N, outCh, 2L, 2W)
         
-        # Optional class vector applied over the channels
-        self.useCls = useCls
-        if useCls:
-            self.clsProj1 = nn.Linear(cls_dim, inCh)
-            self.clsProj2 = nn.Linear(cls_dim, outCh)
+        # Optional time vector applied over the channels
+        self.t_dim = t_dim
+        if t_dim != None:
+            self.timeProj1 = nn.Linear(t_dim, inCh)
+            self.timeProj2 = nn.Linear(t_dim, outCh)
     
     
     
     # Input:
     #   X - Tensor of shape (N, inCh, L, W)
-    #   cls - vector of shape (N, cls_dim)
+    #   t - (optional) vector of shape (N, t_dim)
     # Output:
     #   Tensor of shape (N, outCh, 2L, 2W)
-    def forward(self, X, cls=None):
+    def forward(self, X, t=None):
         # Residual path
         res = self.Res(X.clone())
         
         # Main path with optional class addition
         X = self.BN1(X)
-        if self.useCls and cls != None:
-            cls1 = self.clsProj1(cls).unsqueeze(-1).unsqueeze(-1)
-            X += cls1
+        if self.t_dim != None and t != None:
+            X += self.timeProj1(t).unsqueeze(-1).unsqueeze(-1)
         X = self.Act1(X)
         X = self.Up(X)
         X = self.Conv1(X)
-        if self.useCls and cls != None:
-            cls2 = self.clsProj2(cls).unsqueeze(-1).unsqueeze(-1)
-            X += cls2
+        X = self.BN2(X)
+        if self.t_dim != None and t != None:
+            X += self.timeProj2(t).unsqueeze(-1).unsqueeze(-1)
         X = self.Act2(X)
         X = self.Conv2(X)
         

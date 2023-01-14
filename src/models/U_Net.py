@@ -8,9 +8,6 @@ try:
     from blocks.BigGAN_ResDown import BigGAN_ResDown
     from blocks.BigGAN_ResUp import BigGAN_ResUp
     from blocks.BigGAN_Res import BigGAN_Res
-    from blocks.BigGAN_ResDown_Deep import BigGAN_ResDown_Deep
-    from blocks.BigGAN_ResUp_Deep import BigGAN_ResUp_Deep
-    from blocks.BigGAN_Res_Deep import BigGAN_Res_Deep
     from blocks.Non_local_MH import Non_local_MH
     from blocks.resBlock import resBlock
     from blocks.convNext import convNext
@@ -19,9 +16,6 @@ except ModuleNotFoundError:
     from ..blocks.BigGAN_ResDown import BigGAN_ResDown
     from ..blocks.BigGAN_ResUp import BigGAN_ResUp
     from ..blocks.BigGAN_Res import BigGAN_Res
-    from ..blocks.BigGAN_ResDown_Deep import BigGAN_ResDown_Deep
-    from ..blocks.BigGAN_ResUp_Deep import BigGAN_ResUp_Deep
-    from ..blocks.BigGAN_Res_Deep import BigGAN_Res_Deep
     from ..blocks.Non_local_MH import Non_local_MH
     from ..blocks.resBlock import resBlock
     from ..blocks.convNext import convNext
@@ -88,6 +82,7 @@ class U_Net(nn.Module):
                 blocks.append(resBlock(embCh*(2**(chMult*i)), outCh, t_dim, c_dim, num_heads=1, dropoutRate=dropoutRate))
             else:
                 blocks.append(nn.ConvTranspose2d(embCh*(2**(chMult*(i))), embCh*(2**(chMult*(i))), kernel_size=4, stride=2, padding=1))
+                # blocks.append(BigGAN_ResUp(embCh*(2**(chMult*(i))), embCh*(2**(chMult*(i))), t_dim, dropoutRate))
                 blocks.append(resBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*(i-1))), t_dim, c_dim, head_res=16, dropoutRate=dropoutRate))
         self.upBlocks = nn.Sequential(
             *blocks
