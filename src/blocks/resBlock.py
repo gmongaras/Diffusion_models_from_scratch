@@ -31,12 +31,13 @@ class resBlock(nn.Module):
         self.useCls = False if c_dim == None else True
 
         self.block = nn.Sequential(
-            convNext(inCh, outCh, t_dim, dropoutRate),
-            clsAttn(c_dim, outCh) if self.useCls == True else nn.Identity(),
+            convNext(inCh, outCh, t_dim, c_dim, dropoutRate),
+            # clsAttn(c_dim, outCh) if self.useCls == True else nn.Identity(),
             # Efficient_Cls_Attention(c_dim, outCh) if self.useCls == True else nn.Identity(),
-            convNext(outCh, outCh, t_dim, dropoutRate),
+            convNext(outCh, outCh, t_dim, c_dim, dropoutRate),
+            clsAttn(c_dim, outCh) if self.useCls == True else nn.Identity(),
             Efficient_Channel_Attention(outCh) if use_attn else nn.Identity(),
-            Multihead_Attn(outCh, 2, 16, True),
+            # Multihead_Attn(outCh, 2, 16, True),
             # convNext(outCh, outCh, True, t_dim, dropoutRate),
             # Non_local_MH(outCh, num_heads, head_res, spatial=True),
             # Spatial_Channel_Attention(outCh, num_heads, head_res)
@@ -57,7 +58,7 @@ class resBlock(nn.Module):
 
         for b in self.block:
             if type(b) == convNext:
-                X = b(X, t)
+                X = b(X, t, c)
             elif type(b) == clsAttn or type(b) == clsAttn_Linear or type(b) == Efficient_Cls_Attention:
                 X = b(X, c)
             else:

@@ -12,6 +12,7 @@ try:
     from blocks.resBlock import resBlock
     from blocks.convNext import convNext
     from blocks.Efficient_Channel_Attention import Efficient_Channel_Attention
+    from blocks.Multihead_Attn import Multihead_Attn
 except ModuleNotFoundError:
     from ..blocks.BigGAN_ResDown import BigGAN_ResDown
     from ..blocks.BigGAN_ResUp import BigGAN_ResUp
@@ -20,6 +21,7 @@ except ModuleNotFoundError:
     from ..blocks.resBlock import resBlock
     from ..blocks.convNext import convNext
     from ..blocks.Efficient_Channel_Attention import Efficient_Channel_Attention
+    from ..blocks.Multihead_Attn import Multihead_Attn
 
 
 
