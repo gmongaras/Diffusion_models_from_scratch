@@ -20,7 +20,7 @@ def train():
     Lambda = 0.001
     beta_sched = "cosine"
     batchSize = 120
-    numSteps = 4            # Number of steps to breakup the batchSize into. Instead
+    numSteps = 5            # Number of steps to breakup the batchSize into. Instead
                             # of taking 1 massive step where the whole batch is loaded into
                             # memory, the batchSize is broken up into sizes of
                             # batchSize//numSteps so that it can fit into memory. Mathematically,
