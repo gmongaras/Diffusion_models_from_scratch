@@ -9,8 +9,8 @@ def infer():
 
     ## Loading params
     loadDir = "models/"
-    loadFile = "model_20e_24000s.pkl"
-    loadDefFile = "model_params_20e_24000s.json"
+    loadFile = "model_70e_90000s.pkl"
+    loadDefFile = "model_params_70e_90000s.json"
 
     ## Generation paramters
     step_size = 10               # Step size to take when generating images
@@ -19,16 +19,16 @@ def infer():
                             # Note: a low scalar performs better with a high step size.
                             # and a high scalar performs better with a low step size.
     device = "gpu"
-    w = 1                 # (only used if the model uses class info) 
+    w = 0                 # (only used if the model uses class info) 
                             # Classifier guidance scale factor
                             # Use 0 for no classifier guidance.
-    class_label = 0         # (only used if the model uses class info) 
+    class_label = 792         # (only used if the model uses class info) 
                             # Class we want the model to generate
                             # Use -1 to generate without a class
     corrected = False       # True to put a limit on generation. 
                             # False to not restrain generation
                             # This may make generation more stable if
-                            # the model is generating nan or mostly black images
+                            # the model is generating nan or mostly black/white images
                             # Note that this restriction is usually needed
                             # when generating long sequences (low step size)
                             # and when using a DDPM
