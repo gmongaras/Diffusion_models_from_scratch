@@ -40,11 +40,12 @@ def compute_imagenet_stats():
     for filename in archive1.filelist:
         file = pickle.load(archive1.open(filename.filename, "r"))
         data.append(file["data"])
+        break
         del file
-    for filename in archive2.filelist:
-        file = pickle.load(archive2.open(filename.filename, "r"))
-        data.append(file["data"])
-        del file
+    # for filename in archive2.filelist:
+    #     file = pickle.load(archive2.open(filename.filename, "r"))
+    #     data.append(file["data"])
+    #     del file
     
     # Load the data
     archive1.close()
@@ -61,6 +62,18 @@ def compute_imagenet_stats():
 
     # Get a subset of the data
     img_data = img_data[:num_imgs]
+
+    # Used to transforms the images to the correct distirbution
+    # as shown here: https://pytorch.org/hub/pytorch_vision_inception_v3/
+    def normalize(imgs):
+        # Convert image to 299x299
+        imgs = transforms.Compose([transforms.Resize((299,299))])(imgs)
+
+        # Standardize to [0, 1]
+        imgs = imgs/255.0
+
+        # Normalize by mean and std
+        return transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])(imgs)
 
 
 
@@ -94,8 +107,8 @@ def compute_imagenet_stats():
             # Get the current batch of images
             imgs = img_data[batchSize*i:cur_batch_size+(batchSize*i)]
 
-            # Resize the images to be of shape (3, 299, 299)
-            imgs = transforms.Compose([transforms.Resize((299,299))])(imgs.to(torch.uint8))
+            # Normalize the inputs
+            imgs = normalize(imgs.to(torch.uint8))
 
             # Calculate the inception scores and store them
             if type(scores) == type(None):

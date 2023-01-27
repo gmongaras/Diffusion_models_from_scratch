@@ -24,14 +24,14 @@ def compute_model_stats():
 
 
     # Parameters
-    model_dirname = "models"
-    model_filename = "model_190000.pkl"
-    model_params_filename = "model_params_190000.json"
+    model_dirname = "models_res"
+    model_filename = "model_152e_190000s.pkl"
+    model_params_filename = "model_params_152e_190000s.json"
 
     device = "gpu"
 
     num_fake_imgs = 10000
-    batchSize = 190
+    batchSize = 200
 
     step_size = 100
     DDIM_scale = 0
@@ -41,9 +41,17 @@ def compute_model_stats():
     var_filename = "fake_var_190K.npy"
 
 
-    assert 1==2, "I am purposely raising this error for the future. The images need to"\
-                 "be scaled between 0 and 1 and reduced in a specific way as found here:"\
-                 "https://pytorch.org/hub/pytorch_vision_inception_v3/"
+    # Used to transforms the images to the correct distirbution
+    # as shown here: https://pytorch.org/hub/pytorch_vision_inception_v3/
+    def normalize(imgs):
+        # Convert image to 299x299
+        imgs = transforms.Compose([transforms.Resize((299,299))])(imgs)
+
+        # Standardize to [0, 1]
+        imgs = imgs/255.0
+
+        # Normalize by mean and std
+        return transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])(imgs)
 
 
 
@@ -52,7 +60,7 @@ def compute_model_stats():
 
 
     # Load in the model
-    model = diff_model(1, 64, 1, 1, 10000, 1, 1, device, 0, step_size, DDIM_scale)
+    model = diff_model(3, 3, 1, 1, 100000, "cosine", 100, device, 100, 1000, 0.0, step_size, DDIM_scale)
     model.loadModel(model_dirname, model_filename, model_params_filename)
     model.eval()
 
@@ -79,8 +87,8 @@ def compute_model_stats():
             # Generate some images
             imgs = model.sample_imgs(cur_batch_size, use_tqdm=True, unreduce=True)
 
-            # Resize the images to be of shape (3, 299, 299)
-            imgs = transforms.Compose([transforms.Resize((299,299))])(imgs.to(torch.uint8))
+            # Normalize the inputs
+            imgs = normalize(imgs.to(torch.uint8))
 
             # Calculate the inception scores and store them
             if type(scores) == type(None):
