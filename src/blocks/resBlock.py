@@ -38,6 +38,8 @@ class resBlock(nn.Module):
             # Efficient_Channel_Attention(outCh) if use_attn else nn.Identity(),
 
             ResnetBlock(inCh, outCh, t_dim, c_dim, dropoutRate),
+            # ResnetBlock(outCh, outCh, t_dim, c_dim, dropoutRate),
+            # convNext(outCh, outCh, t_dim, c_dim, dropoutRate),
             ResnetBlock(outCh, outCh, t_dim, c_dim, dropoutRate),
             clsAttn(c_dim, outCh) if self.useCls == True else nn.Identity(),
             Efficient_Channel_Attention(outCh) if use_attn else nn.Identity(),

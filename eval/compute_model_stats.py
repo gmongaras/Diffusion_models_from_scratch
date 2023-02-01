@@ -33,8 +33,9 @@ def compute_model_stats():
     num_fake_imgs = 10000
     batchSize = 200
 
-    step_size = 100
-    DDIM_scale = 0
+    step_size = 1
+    DDIM_scale = 1
+    corrected = True
 
     # Filenames
     mean_filename = "fake_mean_190K.npy"
@@ -85,7 +86,7 @@ def compute_model_stats():
             cur_batch_size = min(num_fake_imgs, batchSize*(i+1))-batchSize*i
 
             # Generate some images
-            imgs = model.sample_imgs(cur_batch_size, use_tqdm=True, unreduce=True)
+            imgs = model.sample_imgs(cur_batch_size, use_tqdm=True, unreduce=True, corrected=corrected)
 
             # Normalize the inputs
             imgs = normalize(imgs.to(torch.uint8))
