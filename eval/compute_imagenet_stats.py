@@ -40,12 +40,11 @@ def compute_imagenet_stats():
     for filename in archive1.filelist:
         file = pickle.load(archive1.open(filename.filename, "r"))
         data.append(file["data"])
-        break
         del file
-    # for filename in archive2.filelist:
-    #     file = pickle.load(archive2.open(filename.filename, "r"))
-    #     data.append(file["data"])
-    #     del file
+    for filename in archive2.filelist:
+        file = pickle.load(archive2.open(filename.filename, "r"))
+        data.append(file["data"])
+        del file
     
     # Load the data
     archive1.close()
