@@ -16,6 +16,15 @@ def main():
     # Limit on the number of data to load (-1 for all)
     limit = 100
 
+    
+
+
+
+    # If the limit is -1, we want to see how many files there
+    # are and assume that is the limit
+    if limit == -1:
+        limit = len(os.listdir(data_dir))
+
     # Massive tensor is pre-initialized to 64x64 images
     # of type uint8 and labels of type int 32
     imgs = torch.zeros(limit, 3, 64, 64, dtype=torch.uint8)
@@ -51,6 +60,12 @@ def main():
 
         if cur_iter == limit:
             break
+    
+    # If the limit is -1, there may have been some empty
+    # files, so we want to slice by the cur_iter value
+    # which represents the actual number of images loaded in
+    imgs = imgs[:cur_iter]
+    labels = labels[:cur_iter]
     
     # Save the massive tensors
     torch.save(imgs, "data/Imagenet64_imgs.pt")
