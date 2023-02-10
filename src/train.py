@@ -35,6 +35,7 @@ def train():
     dropoutRate = 0.1
     use_importance = False # Should importance sampling be used to sample values of t?
     data_path = "data/Imagenet64"
+    load_into_mem = True   # True to load all data into memory first, False to load from disk as needed
     
     ## Saving params
     saveDir = "models/"
@@ -77,7 +78,7 @@ def train():
         model.loadModel(loadDir, loadFile, loadDefFile,)
     
     # Train the model
-    trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond)
+    trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond, load_into_mem=load_into_mem)
     trainer.train(data_path, num_data, cls_min, reshapeType)
     # trainer.train(img_data, labels if c_dim != None else None)
     

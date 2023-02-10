@@ -10,6 +10,7 @@ eval/saved_stats/*
 !models/README.md
 !data/README.md
 !data/loadImagenet64.py
+!data/make_massive_tensor.py
 
 
 # Byte-compiled / optimized / DLL files

@@ -78,7 +78,8 @@ class model_trainer():
     # use_importance - True to use importance sampling to sample values of t,
     #                  False to use uniform sampling.
     # p_uncond - Probability of training on a null class (only used if class info is used)
-    def __init__(self, diff_model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond=None, max_world_size=None):
+    # load_into_mem - True to load all data into memory first, False to load from disk as needed
+    def __init__(self, diff_model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond=None, max_world_size=None, load_into_mem=False):
         # Saved info
         self.T = diff_model.T
         self.batchSize = batchSize//numSteps
@@ -89,6 +90,7 @@ class model_trainer():
         self.numSaveSteps = numSaveSteps
         self.use_importance = use_importance
         self.p_uncond = p_uncond
+        self.load_into_mem = load_into_mem
         
         # Convert the device to a torch device
         if device.lower() == "gpu":
@@ -309,7 +311,7 @@ class model_trainer():
         self.model.train()
 
         # Create a sampler and loader over the dataset
-        dataset = CustomDataset(data_path, num_data, cls_min, scale=reshapeType)
+        dataset = CustomDataset(data_path, num_data, cls_min, scale=reshapeType, loadMem=self.load_into_mem)
         if self.dev == "cpu":
             data_loader = DataLoader(dataset, batch_size=self.batchSize,
                 pin_memory=True, num_workers=0, 

@@ -12,7 +12,7 @@ import math
 class CustomDataset(Dataset):
     """Generative Dataset."""
 
-    def __init__(self, data_path, num_data, cls_min, transform=True, shuffle=True, scale=None):
+    def __init__(self, data_path, num_data, cls_min, transform=True, shuffle=True, scale=None, loadMem=False):
         """
         Args:
             data_path (str): Path to the data to load in
@@ -22,6 +22,7 @@ class CustomDataset(Dataset):
             shuffle (boolean): True to shuffle the data upon entering. False otherwise
             scale (str or NoneType): Scale data "up" or "down" to the nearest power of 2
                                      or keep the data the same shape with None
+            loadMem (boolean): True to load in all data to memory, False to keep it on disk
         """
 
         # Save the data information
@@ -29,14 +30,30 @@ class CustomDataset(Dataset):
         self.num_data = num_data
         self.transform = transform
         self.scale = scale
+        self.loadMem = loadMem
 
         # The min class value represents the value that needs to be
         # subtracted from the class value so the min value will be 0
         self.cls_scale = cls_min
 
+        # Load in all the data onto the disk if specified
+        if self.loadMem:
+            # Load in the massive data tensors
+            self.data_mat = torch.load("data/Imagenet64_imgs.pt")
+            self.label_mat = torch.load("data/Imagenet64_labels.pt")
+
+            # Get the number of data loaded in
+            self.num_data = self.data_mat.shape[0]
+
+            # Make sure the labels and data have the same shapes
+            assert self.data_mat.shape[0] == self.label_mat.shape[0]
+
+            print(f"{self.num_data} data loaded in")
+
+        
         # Create a list of indices which can be used to
         # essentially shuffle the data
-        self.data_idxs = np.arange(0, num_data)
+        self.data_idxs = np.arange(0, self.num_data)
         if shuffle:
             np.random.shuffle(self.data_idxs)
 
@@ -50,20 +67,29 @@ class CustomDataset(Dataset):
         # Convert the given index to the shuffled index
         data_idx = self.data_idxs[idx]
 
-        # Open the data file and load it in
-        data = pickle.load(open(f"{self.data_path}{os.sep}{data_idx}.pkl", "rb"))
+        # If the files were pre-loaded into memory,
+        # just grab them from meory
+        if self.loadMem == True:
+            image = self.data_mat[data_idx]
+            label = self.label_mat[data_idx]
+        
+        # If the files are not preloaded, then
+        # get them from disk individually
+        else:
+            # Open the data file and load it in
+            data = pickle.load(open(f"{self.data_path}{os.sep}{data_idx}.pkl", "rb"))
 
-        # Get the image and class label from the data
-        image = data["img"]
-        label = data["label"]
+            # Get the image and class label from the data
+            image = data["img"]
+            label = data["label"]
 
-        # Subtract the min class value so the min label is 0
-        label -= self.cls_scale
+            # Subtract the min class value so the min label is 0
+            label -= self.cls_scale
 
-        # Convert the data to a tensor
-        image = torch.tensor(image, dtype=torch.float32, device=torch.device("cpu"))
-        image = image.reshape(3, 64, 64)
-        label = torch.tensor(label, dtype=torch.int)
+            # Convert the data to a tensor
+            image = torch.tensor(image, dtype=torch.float32, device=torch.device("cpu"))
+            image = image.reshape(3, 64, 64)
+            label = torch.tensor(label, dtype=torch.int)
 
         # Reshape the image to the nearest power of 2
         if self.scale is not None:
