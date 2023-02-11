@@ -40,16 +40,24 @@ def main():
         try:
             tens = pickle.load(open(filename, "rb"))
         except pickle.UnpicklingError:
-            print(f"Error with file {filename}")
+            print(f"Pickle error with file {filename}")
             continue
 
         # Get the image and label data
-        img = tens["img"]
-        label = tens["label"]
+        try:
+            img = tens["img"]
+            label = tens["label"]
+        except KeyError:
+            print(f"Key error with file {filename}")
+            continue
 
         # Convert the imgage and label to the corrent form
-        img = torch.tensor(img, dtype=torch.uint8).reshape(3, 64, 64)
-        label = torch.tensor(label, dtype=torch.int32)
+        try:
+            img = torch.tensor(img, dtype=torch.uint8).reshape(3, 64, 64)
+            label = torch.tensor(label, dtype=torch.int32)
+        except RuntimeError:
+            print(f"Shape error with file {filename}")
+            continue
 
         # Save the data to the massive tensors
         imgs[cur_iter] = img
