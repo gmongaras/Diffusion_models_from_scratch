@@ -70,8 +70,8 @@ class CustomDataset(Dataset):
         # If the files were pre-loaded into memory,
         # just grab them from meory
         if self.loadMem == True:
-            image = self.data_mat[data_idx]
-            label = self.label_mat[data_idx]
+            image = self.data_mat[data_idx].clone()
+            label = self.label_mat[data_idx].clone()
 
             # Subtract the min class value so the min label is 0
             label -= self.cls_scale
