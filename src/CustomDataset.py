@@ -72,6 +72,9 @@ class CustomDataset(Dataset):
         if self.loadMem == True:
             image = self.data_mat[data_idx]
             label = self.label_mat[data_idx]
+
+            # Subtract the min class value so the min label is 0
+            label -= self.cls_scale
         
         # If the files are not preloaded, then
         # get them from disk individually
