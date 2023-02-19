@@ -126,7 +126,18 @@ To get the data, you must first request access and be accepted to download the I
 
 <img width="326" alt="image" src="https://user-images.githubusercontent.com/43501738/219979158-829771f5-6357-4e21-acc5-b0c903ac1557.png">
 
-Once downloaded, you directory should look as follows: [Directory Structure](#directory-structure)
+Once downloaded, you should pur both the `Imagenet64_train_part1.zip` and `Imagenet64_train_part2.zip` in the data/ directory.
+
+The zip files are in the correct directory, run the following script to load the data into the necessary format:
+
+`python data/loadImagenet64.py`
+
+If you wish to load the data into memory before training, run the script below. Otherwise, the data will be extracted from disk as needed.
+
+`python data/make_massive_tensor.py`
+
+
+The directory should look as follows when all data is downloaded: [Directory Structure](#directory-structure)
 
 
 
@@ -136,36 +147,68 @@ Once downloaded, you directory should look as follows: [Directory Structure](#di
 
 ```
 .
-├── coco
-│   ├── annotations
-|   |   ├── captions_train2017.json
-|   |   ├── captions_val2017.json
-|   |   ├── instances_train2017.json
-|   |   ├── instances_val2017.json
-|   |   ├── person_keypoints_train2017.json
-|   |   └── person_keypoints_val2017.json
-│   └── images
-|   |   ├── train 2017
-|   |   |   ├── 000000000009.jpg
-|   |   |   ├── 000000000025.jpg
-|   |   |   ├── ...
-|   |   |   └── {more images in the train2017 dataset}
-|   |   ├── val2017
-|   |   |   ├── 000000000139.jpg
-|   |   |   ├── 000000000285.jpg
-|   |   |   ├── ...
-|   |   |   └── {more images in the val2017 dataset}
+├── data
+│   ├── Imagenet64
+|   |   ├── 0.pkl
+|   |   ├── ...
+|   |   ├── metadata.pkl
+│   ├── Imagenet64_train_part1.zip
+│   ├── Imagenet64_train_part1.zip
+│   ├── README.md
+│   ├── archive.zip
+│   ├── loadImagenet64.py
+│   ├── make_massive_tensor.py
+├── eval
+|   ├── __init__.py
+|   ├── compute_FID.py
+|   ├── compute_imagenet_stats.py
+|   ├── compute_model_stats.py
+|   ├── compute_model_stats_multiple.py
 ├── models
-│   ├── model - test.pkl
-|   └── modelParams - test.json
+|   ├── README.md
+|   ├── [model_param_name].json
+|   ├── [model_name].pkl
 ├── src
-│   ├── YOLOX.py
-│   └── {all other .py scripts}
-├── testData
-|   ├── 000000013201.jpg
-|   └── {Other images to test on}
+|   ├── blocks
+|   |   ├── BigGAN_Res.py
+|   |   ├── BigGAN_ResDown.py
+|   |   ├── BigGAN_ResUp.py
+|   |   ├── ConditionalBatchNorm2D.py
+|   |   ├── Efficient_Channel_Attention.py
+|   |   ├── Multihead_Attn.py
+|   |   ├── Non_local.py
+|   |   ├── Non_local_MH.py
+|   |   ├── PositionalEncoding.py
+|   |   ├── Spatial_Channel_Attention.py
+|   |   ├── __init__.py
+|   |   ├── clsAttn.py
+|   |   ├── convNext.py
+|   |   ├── resBlock.py
+|   |   ├── wideResNet.py
+|   ├── helpers
+|   |   ├── PixelCNN_PP_helper_functions.py
+|   |   ├── PixelCNN_PP_loss.py
+|   |   ├── image_rescale.py
+|   |   ├── multi_gpu_helpers.py
+|   ├── models
+|   |   ├── PixelCNN.py
+|   |   ├── PixelCNN_PP.py
+|   |   ├── U_Net.py
+|   |   ├── Variance_Scheduler.py
+|   |   ├── diff_model.py
+|   ├── CustomDataset.py
+|   ├── __init__.py
+|   ├── infer.py
+|   ├── model_trainer.py
+|   ├── train.py
+├── tests
+|   ├── BigGAN_Res_test.py
+|   ├── U_Net_test.py
+|   ├── __init__.py
+|   ├── diff_model_noise_test.py
+├── .gitattributes
 ├── .gitignore
-└── README.md
+├── README.md
 ```
 
 
@@ -179,9 +222,14 @@ Once downloaded, you directory should look as follows: [Directory Structure](#di
 Before training a model, make sure you [setup the environment] and [downloaded the data]
 
 To train a model, run the following command from the root directory.
-``
+`torchrun --nproc_per_node={n_gpus} src/train.py`
+
+Replace `n_gpus` with the number of desired GPUs to use.
 
 
+## Training Parameters
+
+params
 
 
 
