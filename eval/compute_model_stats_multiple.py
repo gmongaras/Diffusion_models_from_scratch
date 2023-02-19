@@ -54,8 +54,8 @@ def compute_model_stats_multiple():
     corrected = True
 
     # Batch size and number of images to generate
-    num_fake_imgs = 10000,
-    batchSize = 200,
+    num_fake_imgs = 10000
+    batchSize = 200
 
     # Path to filename to save the mean and variance to
     file_path = "eval/saved_stats/res/scale_1_step_1/"
@@ -100,7 +100,7 @@ def compute_model_stats_multiple():
         mean_filename = mean_filenames[i]
         var_filename = var_filenames[i]
 
-        threading.Thread(
+        th = threading.Thread(
             target=compute_model_stats,
             args = (dir_name,
                         model_filename,
@@ -115,7 +115,8 @@ def compute_model_stats_multiple():
                         file_path,
                         mean_filename,
                         var_filename)
-        ).start()
+        )
+        th.start()
 
 
 
