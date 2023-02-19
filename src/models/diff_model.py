@@ -77,23 +77,27 @@ class diff_model(nn.Module):
         }
         
         # Convert the device to a torch device
-        if device.lower() == "gpu":
-            if torch.cuda.is_available():
-                dev = device.lower()
-                try:
-                    local_rank = int(os.environ['LOCAL_RANK'])
-                except KeyError:
-                    local_rank = 0
-                device = torch.device(f"cuda:{local_rank}")
+        if type(device) is str:
+            if device.lower() == "gpu":
+                if torch.cuda.is_available():
+                    dev = device.lower()
+                    try:
+                        local_rank = int(os.environ['LOCAL_RANK'])
+                    except KeyError:
+                        local_rank = 0
+                    device = torch.device(f"cuda:{local_rank}")
+                else:
+                    dev = "cpu"
+                    print("GPU not available, defaulting to CPU. Please ignore this message if you do not wish to use a GPU\n")
+                    device = torch.device('cpu')
             else:
                 dev = "cpu"
-                print("GPU not available, defaulting to CPU. Please ignore this message if you do not wish to use a GPU\n")
                 device = torch.device('cpu')
+            self.device = device
+            self.dev = dev
         else:
-            dev = "cpu"
-            device = torch.device('cpu')
-        self.device = device
-        self.dev = dev
+            self.device = device
+            self.dev = "cpu" if device.type == "cpu" else "gpu"
         
         # Convert T to a tensor
         self.T = torch.tensor(T, device=device)
