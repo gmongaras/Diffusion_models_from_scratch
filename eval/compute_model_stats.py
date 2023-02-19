@@ -19,27 +19,32 @@ cpu = torch.device("cpu")
 
 
 
-def compute_model_stats():
-    # Compute the mean and varaince of the model
+# Computes the mean and variance of the given model
+# for its FID scores and saves it to a tensor
+def compute_model_stats(
+        # Load name parameters
+        model_dirname="models_res",
+        model_filename = "model_152e_190000s.pkl",
+        model_params_filename = "model_params_152e_190000s.json",
 
+        # Device to load in
+        device = "gpu",
+        gpu_num = 0,
 
-    # Parameters
-    model_dirname = "models_res"
-    model_filename = "model_152e_190000s.pkl"
-    model_params_filename = "model_params_152e_190000s.json"
+        # Batch size and number of images to generate
+        num_fake_imgs = 10000,
+        batchSize = 200,
 
-    device = "gpu"
+        # Generation step size, DDIM scale, correct output?
+        step_size = 1,
+        DDIM_scale = 1,
+        corrected = True,
 
-    num_fake_imgs = 10000
-    batchSize = 200
-
-    step_size = 1
-    DDIM_scale = 1
-    corrected = True
-
-    # Filenames
-    mean_filename = "fake_mean_190K.npy"
-    var_filename = "fake_var_190K.npy"
+        # Filenames for outputs
+        file_path = "eval/saved_stats/",
+        mean_filename = "fake_mean_190K.npy",
+        var_filename = "fake_var_190K.npy",
+    ):
 
 
     # Used to transforms the images to the correct distirbution
@@ -59,6 +64,11 @@ def compute_model_stats():
 
 
 
+    # Get the device
+    if device == "gpu":
+        device = torch.device(f"cuda:{gpu_num}")
+    else:
+        device = torch.device(f"cpu")
 
     # Load in the model
     model = diff_model(3, 3, 1, 1, 100000, "cosine", 100, device, 100, 1000, 0.0, step_size, DDIM_scale)
@@ -109,8 +119,8 @@ def compute_model_stats():
 
 
     # Save the mean and variance
-    np.save(f"eval/saved_stats/{mean_filename}", mean)
-    np.save(f"eval/saved_stats/{var_filename}", var)
+    np.save(f"{file_path}{os.sep}{mean_filename}", mean)
+    np.save(f"{file_path}{os.sep}{var_filename}", var)
 
 
 
