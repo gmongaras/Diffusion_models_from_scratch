@@ -1,10 +1,23 @@
-# Diffusion_models_from_scratch
-Creating a diffusion model from scratch in PyTorch to learn exactly how they work.
+# Contents
+- Current Additions
+  - Basic Diffusion Model (DDPM)
+  - Scheduling the Forward Process
+  - Modeling the Reverse Process
+  - Faster Inference with DDIMs
+  - Classifier Free Guidance
+- Environment Setup
+- Train A Model
+- Generate Images With Pretrained Models
+- Calculating FID for a pretrained model
+- My Results
+- Data
+- References
+
 
 # Current Additions
 This section will go over the current additions to the model. It starts with the basics of a diffusion model and goes into what I've added to improve it. Most of it will be according to [Diffusion Models Beat GANs on Image Synthesis](https://arxiv.org/abs/2105.05233).
 
-## Basic Diffusion Model
+## Basic Diffusion Model (DDPM)
 
 A diffusion model is defined by a markov chain noising and unnoising process in which a noise scheduler, q, noises data from time t-1 to time t (forward process) and a learned function, p, unoises the data from time t to time t-1 (reverse process). The image below shows this process.
 
@@ -34,7 +47,7 @@ The model being used is a probabilistic U-net model in which the current noised 
 
 
 
-## Faster inference With DDIM
+## Faster inference With DDIMs
 
 The main problem with DDPMs is that they are very slow to generate as DDPMs take T steps to generate images where T is in the thousands. The DDIM paper attempts to fix this issue by essentially skipping steps from the diffusion process when generating images. To do this, DDIMs use the exact same training process as DDPMs, but only change the inference procedure to use a non-Markovian process instead of the default Markovian one. The Markovian process is inhenintly defined as a chain of sequential operations, but the non-Markovian process defined for DDIMs only use the original gaussian noise, allowing it to take large steps as they are not needed to generate the image, only to (usually) fine-tune it.
 
@@ -50,15 +63,146 @@ With this change generation procedure, the model becomes both Markovian or non-M
 
 Note that the proposed formulation of σ is the same as the hyperparameter η multiplied by the square root of the beta tilde value defined in the DDPM and improved DDPM paper. Using this formula, the generative process becomes a default Markovian DDPM when η is 1 and a deterministic DDIM when η is 0. τ is another hyperparameter which is the chain of t values the model will use to generate an image where τ is a subset of the set of all t values: [1, 2, ..., T-1, T]. This way, we can take some sort of subset of t values and generate an image in much fewer steps than usual.
 
-Since the standard deviation is just the same as the static statndard deviation used by the DDPM authors and our model predicts Σ which ranges between beta and beta tilde, we can replace it with the sqare root of the predicted variance, Σ, of our model. This way the model still has control over the variance. In fact, this is similar to what the improved DDPM authors do. Instead, in this repo the model variance still controls the variance of the noise, but not the variance of the prediction. The variance of the x_t direction prediction is kept as the static σ value above. This way, the model can be changed from a DDPM to a DDIM using σ, but still has control over how the noise is added in the generation process with Σ. The formulation of the process is as follows:
+Since the standard deviation is just the same as the static standard deviation used by the DDPM authors and our model predicts Σ which ranges between beta and beta tilde, we can replace it with the sqare root of the predicted variance, Σ, of our model. This way the model still has control over the variance. In fact, this is similar to what the improved DDPM authors do. Instead, in this repo the model variance still controls the variance of the noise, but not the variance of the prediction. The variance of the x_t direction prediction is kept as the static σ value above. This way, the model can be changed from a DDPM to a DDIM using σ, but still has control over how the noise is added in the generation process with Σ. The formulation of the process is as follows:
 
 ![image](https://user-images.githubusercontent.com/43501738/209422729-ccfa8481-70ea-4cad-8a6a-c079e7dd1c3a.png)
 
 
 ## Classifier Free Guidance
 
+Before classifier-free guidance, classifier-guidance was proposed to 
+
 [I will also attempt to implement this soon]
 https://arxiv.org/abs/2207.12598
+
+
+
+
+
+
+# Environment Setup
+
+First, download the data from this repo using the following on the command line
+
+```
+git clone https://github.com/gmongaras/Diffusion_models_from_scratch.git
+cd Diffusion_models_from_scratch/
+```
+
+(Optional) If you don't want to change your environment, you can first create a virtual environment:
+```
+pip install virtualenv
+python -m venv MyEnv/
+```
+Activate the virtual environment: [https://docs.python.org/3/library/venv.html#how-venvs-work](https://docs.python.org/3/library/venv.html#how-venvs-work)
+
+Windows: `MyEnv\Scripts\activate.bat`
+
+Linux: `source MyEnv/bin/activate`
+
+
+
+Before running any scripts, make sure to download the correct packages and package versions. You can do so by running the following commands to upgrade pip and install the necessary package versions:
+```
+pip install pip -U
+pip install -U requirements.txt
+```
+
+Note: PyTorch should be installed with cuda enabled if training and probably should have cuda if generating images, but is not required. The cuda version downloaded may be different from the one needed. The cuda versions and how to download them can be found below:
+
+[https://pytorch.org/get-started/locally/](https://pytorch.org/get-started/locally/)
+
+Now the enviroment should be setup properly.
+
+
+
+
+# Downloading Data
+
+Imagenet data can be downloaded from the following link:
+https://image-net.org/download-images.php
+
+To get the data, you must first request access and be accepted to download the Imagenet data. I trained my models on Imagenet 64x64
+
+<img width="326" alt="image" src="https://user-images.githubusercontent.com/43501738/219979158-829771f5-6357-4e21-acc5-b0c903ac1557.png">
+
+Once downloaded, you directory should look as follows: [Directory Structure](#directory-structure)
+
+
+
+
+
+# Directory Structure
+
+```
+.
+├── coco
+│   ├── annotations
+|   |   ├── captions_train2017.json
+|   |   ├── captions_val2017.json
+|   |   ├── instances_train2017.json
+|   |   ├── instances_val2017.json
+|   |   ├── person_keypoints_train2017.json
+|   |   └── person_keypoints_val2017.json
+│   └── images
+|   |   ├── train 2017
+|   |   |   ├── 000000000009.jpg
+|   |   |   ├── 000000000025.jpg
+|   |   |   ├── ...
+|   |   |   └── {more images in the train2017 dataset}
+|   |   ├── val2017
+|   |   |   ├── 000000000139.jpg
+|   |   |   ├── 000000000285.jpg
+|   |   |   ├── ...
+|   |   |   └── {more images in the val2017 dataset}
+├── models
+│   ├── model - test.pkl
+|   └── modelParams - test.json
+├── src
+│   ├── YOLOX.py
+│   └── {all other .py scripts}
+├── testData
+|   ├── 000000013201.jpg
+|   └── {Other images to test on}
+├── .gitignore
+└── README.md
+```
+
+
+
+
+
+
+
+# Train A Model
+
+Before training a model, make sure you [setup the environment] and [downloaded the data]
+
+To train a model, run the following command from the root directory.
+``
+
+
+
+
+
+# Generate Images With Pretrained Models
+
+
+
+
+
+# Calculating FID for a pretrained model
+
+
+
+
+
+# My Results
+
+
+
+
+
 
 
 
@@ -75,23 +219,15 @@ To run the infer script, use the following command from the root directory:
 
 
 # Data
-## ImageNet
-https://www.kaggle.com/c/imagenet-object-localization-challenge/overview/description
-
-## Mini-ImageNet
-Used for creating the model on my laptop
-
-https://www.kaggle.com/datasets/whitemoon/miniimagenet?select=mini-imagenet-cache-train.pkl
-
-## Cifar-10 and Cifar-100
-https://www.cs.toronto.edu/~kriz/cifar.html
+## ImageNet (64x64)
+https://image-net.org/download-images.php
 
 
 
 
 # References
 
-1. Main Paper Reference (diffusion models beat gans on image synthesis): https://arxiv.org/abs/2105.05233
+1. Diffusion Models Beat GANs on Image Synthesis (with classifier guidance): https://arxiv.org/abs/2105.05233
 
 2. Denoising Diffusion Probabilities Models (DDPMs): https://arxiv.org/abs/2006.11239
 
@@ -99,13 +235,14 @@ https://www.cs.toronto.edu/~kriz/cifar.html
 
 4. Denoising Diffusion Implicit Models (DDIM): https://arxiv.org/abs/2010.02502
 
-5. U-net (Convolutional Networks for Biomedical Image Segmentation): https://arxiv.org/abs/1505.04597
+5. Classifier-Free Guidance: https://arxiv.org/abs/2207.12598
 
-6. ConvNext (A ConvNet for the 2020s): https://arxiv.org/abs/2201.03545
+6. U-net (Convolutional Networks for Biomedical Image Segmentation): https://arxiv.org/abs/1505.04597
 
-7. Where the BigGAN residual blocks comes from (Large Scale GAN Training for High Fidelity Natural Image Synthesis): https://arxiv.org/abs/1809.11096
-
-8. What are non-local blocks? (Non-local Neural Networks): https://arxiv.org/pdf/1711.07971.pdf
+7. ConvNext (A ConvNet for the 2020s): https://arxiv.org/abs/2201.03545
 
 Thanks to the following link for helping me multi-gpu the project!
 https://theaisummer.com/distributed-training-pytorch/
+
+Thanks to Huggingface for the Residual Blocks!
+https://huggingface.co/blog/annotated-diffusion#resnet-block
