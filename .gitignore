@@ -1,5 +1,8 @@
 results/*
 models/*
+models_res_conv/*
+models_res_res/*
+models_res/*
 data/*
 *.gif
 *.png

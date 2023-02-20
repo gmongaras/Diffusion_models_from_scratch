@@ -8,9 +8,12 @@ def infer():
     #### Parameters
 
     ## Loading params
-    loadDir = "models/"
-    loadFile = "model_70e_90000s.pkl"
-    loadDefFile = "model_params_70e_90000s.json"
+    # loadDir = "models_res_conv"
+    # loadFile = "model_399e_500000s.pkl"
+    # loadDefFile = "model_params_399e_500000s.json"
+    loadDir = "models_res_res"
+    loadFile = "model_399e_500000s.pkl"
+    loadDefFile = "model_params_399e_500000s.json"
 
     ## Generation paramters
     step_size = 10               # Step size to take when generating images
@@ -19,19 +22,22 @@ def infer():
                             # Note: a low scalar performs better with a high step size.
                             # and a high scalar performs better with a low step size.
     device = "gpu"
-    w = 0                 # (only used if the model uses class info) 
+    w = 4                 # (only used if the model uses class info) 
                             # Classifier guidance scale factor
                             # Use 0 for no classifier guidance.
-    class_label = 792         # (only used if the model uses class info) 
+                            # The higher this value is, the better the
+                            # quality, but the lower the diversity
+    class_label = 10       # (only used if the model uses class info) 
                             # Class we want the model to generate
-                            # Use -1 to generate without a class
-    corrected = False       # True to put a limit on generation. 
+                            # Use -1 to generate without a class.
+    corrected = True       # True to put a limit on generation. 
                             # False to not restrain generation
                             # This may make generation more stable if
                             # the model is generating nan or mostly black/white images
-                            # Note that this restriction is usually needed
+                            # Note: This restriction is usually needed
                             # when generating long sequences (low step size)
-                            # and when using a DDPM
+                            # Note: With a higher guidance w, the correction
+                            #       usually messes up generation.
     
     
     

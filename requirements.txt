@@ -1,0 +1,7 @@
+--extra-index-url https://download.pytorch.org/whl/cu116
+matplotlib == 3.5.2
+numpy == 1.23.5
+tqdm == 4.64.1
+einops == 0.6.0
+torch == 1.13.1
+torchvision == 0.14.1

@@ -16,7 +16,6 @@ except ModuleNotFoundError:
     from ..blocks.convNext import convNext
 import os
 import json
-import threading
 from .Variance_Scheduler import DDIM_Scheduler
 from tqdm import tqdm
 
@@ -546,7 +545,7 @@ class diff_model(nn.Module):
             D = self.defaults
 
             # Reinitialize the model with the new defaults
-            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_res_blocks"], D["T"], D["beta_sched"], D["t_dim"], self.dev, D["c_dim"], D["num_classes"], 0.0, step_size=self.step_size, DDIM_scale=self.DDIM_scale)
+            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_res_blocks"], D["T"], D["beta_sched"], D["t_dim"], self.device, D["c_dim"], D["num_classes"], 0.0, step_size=self.step_size, DDIM_scale=self.DDIM_scale)
 
             # Load the model state
             self.load_state_dict(torch.load(loadDir + os.sep + loadFile, map_location=self.device))
