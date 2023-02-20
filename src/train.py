@@ -39,10 +39,10 @@ def train():
     
     ## Saving params
     saveDir = "models/"
-    numSaveSteps = 10
+    numSaveSteps = 10000
     
     ## Loading params
-    loadModel = True
+    loadModel = False
     loadDir = "models/"
     loadFile = "model_12e_100s.pkl"
     optimFile = "optim_12e_100s.pkl"
