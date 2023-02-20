@@ -37,7 +37,7 @@ class Non_local_MH(nn.Module):
         self.O_conv = nn.Conv2d(inCh, inCh, 1)
         
         # Layer normalization
-        self.LN = nn.GroupNorm(1, inCh)
+        self.LN = nn.GroupNorm(inCh//4 if inCh > 4 else 1, inCh)
 
         # Is this spatial or channel attention
         self.spatial = spatial

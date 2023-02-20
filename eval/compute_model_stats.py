@@ -19,35 +19,59 @@ cpu = torch.device("cpu")
 
 
 
-def compute_model_stats():
-    # Compute the mean and varaince of the model
+# Computes the mean and variance of the given model
+# for its FID scores and saves it to a tensor
+def compute_model_stats(
+        # Load name parameters
+        model_dirname="models_res",
+        model_filename = "model_152e_190000s.pkl",
+        model_params_filename = "model_params_152e_190000s.json",
+
+        # Device to load in
+        device = "gpu",
+        gpu_num = 0,
+
+        # Batch size and number of images to generate
+        num_fake_imgs = 10000,
+        batchSize = 200,
+
+        # Generation step size, DDIM scale, correct output?
+        step_size = 1,
+        DDIM_scale = 1,
+        corrected = True,
+
+        # Filenames for outputs
+        file_path = "eval/saved_stats/",
+        mean_filename = "fake_mean_190K.npy",
+        var_filename = "fake_var_190K.npy",
+    ):
 
 
-    # Parameters
-    model_dirname = "models"
-    model_filename = "model_190000.pkl"
-    model_params_filename = "model_params_190000.json"
+    # Used to transforms the images to the correct distirbution
+    # as shown here: https://pytorch.org/hub/pytorch_vision_inception_v3/
+    def normalize(imgs):
+        # Convert image to 299x299
+        imgs = transforms.Compose([transforms.Resize((299,299))])(imgs)
 
-    device = "gpu"
+        # Standardize to [0, 1]
+        imgs = imgs/255.0
 
-    num_fake_imgs = 10000
-    batchSize = 190
-
-    step_size = 100
-    DDIM_scale = 0
-
-    # Filenames
-    mean_filename = "fake_mean_190K.npy"
-    var_filename = "fake_var_190K.npy"
+        # Normalize by mean and std
+        return transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])(imgs)
 
 
 
 
 
 
+    # Get the device
+    if device == "gpu":
+        device = torch.device(f"cuda:{gpu_num}")
+    else:
+        device = torch.device(f"cpu")
 
     # Load in the model
-    model = diff_model(1, 64, 1, 1, 1, 10000, 1, 1, device, False, 0, step_size, DDIM_scale)
+    model = diff_model(3, 3, 1, 1, 100000, "cosine", 100, device, 100, 1000, 0.0, step_size, DDIM_scale)
     model.loadModel(model_dirname, model_filename, model_params_filename)
     model.eval()
 
@@ -72,10 +96,10 @@ def compute_model_stats():
             cur_batch_size = min(num_fake_imgs, batchSize*(i+1))-batchSize*i
 
             # Generate some images
-            imgs = model.sample_imgs(cur_batch_size, use_tqdm=True, unreduce=True)
+            imgs = model.sample_imgs(cur_batch_size, use_tqdm=True, unreduce=True, corrected=corrected)
 
-            # Resize the images to be of shape (3, 299, 299)
-            imgs = transforms.Compose([transforms.Resize((299,299))])(imgs.to(torch.uint8))
+            # Normalize the inputs
+            imgs = normalize(imgs.to(torch.uint8))
 
             # Calculate the inception scores and store them
             if type(scores) == type(None):
@@ -95,8 +119,8 @@ def compute_model_stats():
 
 
     # Save the mean and variance
-    np.save(f"eval/saved_stats/{mean_filename}", mean)
-    np.save(f"eval/saved_stats/{var_filename}", var)
+    np.save(f"{file_path}{os.sep}{mean_filename}", mean)
+    np.save(f"{file_path}{os.sep}{var_filename}", var)
 
 
 

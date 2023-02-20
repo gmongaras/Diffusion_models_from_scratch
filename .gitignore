@@ -1,5 +1,8 @@
 results/*
 models/*
+models_res_conv/*
+models_res_res/*
+models_res/*
 data/*
 *.gif
 *.png
@@ -9,6 +12,8 @@ eval/saved_stats/*
 !.gitignore
 !models/README.md
 !data/README.md
+!data/loadImagenet64.py
+!data/make_massive_tensor.py
 
 
 # Byte-compiled / optimized / DLL files

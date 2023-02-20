@@ -1,14 +1,59 @@
 import torch
 from torch import nn
-from .helpers.image_rescale import reduce_image, unreduce_image
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-import threading
+
+import torch.multiprocessing as mp
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.distributed as dist
+
+from CustomDataset import CustomDataset
+from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data.dataloader import DataLoader
+
+try:
+    from helpers.multi_gpu_helpers import is_main_process
+except ModuleNotFoundError:
+    from .helpers.multi_gpu_helpers import is_main_process
 
 
 cpu = torch.device('cpu')
-gpu = torch.device('cuda:0')
+
+
+
+
+def init_distributed():
+
+    # Initializes the distributed backend which will take care of synchronizing nodes/GPUs
+    dist_url = "env://" # default
+
+    # only works with torch.distributed.launch // torchrun
+    rank = int(os.environ["RANK"])
+    world_size = int(os.environ['WORLD_SIZE'])
+    local_rank = int(os.environ['LOCAL_RANK'])
+    
+    # Try the nccl backend
+    try:
+        dist.init_process_group(
+                backend="nccl",
+                init_method=dist_url,
+                world_size=world_size,
+                rank=rank)
+    # Use the gloo backend if nccl isn't supported
+    except RuntimeError:
+        dist.init_process_group(
+                backend="gloo",
+                init_method=dist_url,
+                world_size=world_size,
+                rank=rank)
+
+    # this will make all .cuda() calls work properly
+    torch.cuda.set_device(local_rank)
+
+    # synchronizes all the threads to reach this point before moving on
+    dist.barrier()
 
 
 
@@ -27,42 +72,53 @@ class model_trainer():
     # lr - Learning rate of the model optimizer
     # device - Device to put the model and data on (gpu or cpu)
     # saveDir - Directory to save the model to
-    # numSaveEpochs - Number of epochs until saving the models
+    # numSaveSteps - Number of steps until saving the models
     # use_importance - True to use importance sampling to sample values of t,
     #                  False to use uniform sampling.
-    def __init__(self, diff_model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveEpochs, use_importance):
+    # p_uncond - Probability of training on a null class (only used if class info is used)
+    # load_into_mem - True to load all data into memory first, False to load from disk as needed
+    def __init__(self, diff_model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond=None, max_world_size=None, load_into_mem=False):
         # Saved info
         self.T = diff_model.T
-        self.model = diff_model
         self.batchSize = batchSize//numSteps
         self.numSteps = numSteps
         self.epochs = epochs
         self.Lambda = Lambda
         self.saveDir = saveDir
-        self.numSaveEpochs = numSaveEpochs
+        self.numSaveSteps = numSaveSteps
         self.use_importance = use_importance
+        self.p_uncond = p_uncond
+        self.load_into_mem = load_into_mem
         
         # Convert the device to a torch device
         if device.lower() == "gpu":
             if torch.cuda.is_available():
                 dev = device.lower()
-                device = torch.device('cuda:0')
+                local_rank = int(os.environ['LOCAL_RANK']) if max_world_size is None else min(int(os.environ['LOCAL_RANK']), max_world_size)
+                device = torch.device(f"cuda:{local_rank}")
             else:
                 dev = "cpu"
                 print("GPU not available, defaulting to CPU. Please ignore this message if you do not wish to use a GPU\n")
                 device = torch.device('cpu')
         else:
-            dev = device.lower()
+            dev = "cpu"
             device = torch.device('cpu')
         self.device = device
         self.dev = dev
         
         # Put the model on the desired device
-        self.model.to(self.device)
+        if dev != "cpu":
+            # Initialize the environment
+            init_distributed()
+
+            self.model = DDP(diff_model.cuda(), device_ids=[local_rank], find_unused_parameters=False)
+        else:
+            self.model = diff_model.cpu()
+        # self.model.to(self.device)
             
-        # Uniform distribution for values of t
-        self.t_vals = np.arange(0, self.T.detach().cpu().numpy())
-        self.T_dist = torch.distributions.uniform.Uniform(float(1)-float(0.499), float(self.T-1)+float(0.499))
+        # Uniform distribution for values of t from [1:T]
+        self.t_vals = np.arange(1, self.T.detach().cpu().numpy()+1)
+        self.T_dist = torch.distributions.uniform.Uniform(float(1)-float(0.499), float(self.T)+float(0.499))
         
         # Optimizer
         self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr, eps=1e-4)
@@ -106,20 +162,6 @@ class model_trainer():
         return ((epsilon_pred - epsilon)**2).flatten(1, -1).mean(-1)
 
 
-    # KL Divergence loss
-    # Inputs:
-    #   y_true - Distribution we want the model to predict
-    #   y_pred - Predicted distribution the model predicted
-    # Outputs:
-    #   Vector batch of the KL divergence lossed between the 2 distribution
-    def KLDivergence(self, y_true, y_pred):
-        # Handling small values
-        y_true = torch.where(y_true < 1e-5, y_true+1e-5, y_true)
-        y_pred = torch.where(y_pred < 1e-5, y_pred+1e-5, y_pred)
-        return (y_true*(y_true.log() - y_pred.log())).flatten(1, -1).mean(-1)
-
-        
-    
     # Variational Lower Bound loss function which computes the
     # KL divergence between two gaussians
     # Formula derived from: https://stats.stackexchange.com/questions/7440/kl-divergence-between-two-univariate-gaussians
@@ -129,10 +171,9 @@ class model_trainer():
     #   mean_fake - Mean of the predicted distribution of shape (N, C, L, W)
     #   var_real - Variance of the real distribution of shape (N, C, L, W)
     #   var_fake - Variance of the predicted distribution of shape (N, C, L, W)
-    #   x_0 - The unoised image at time t = 0 of shape (N, C, L, W)
     # Outputs:
     #   Loss vector for each part of the entire batch
-    def loss_vlb_gauss(self, t, mean_real, mean_fake, var_real, var_fake, x_0):
+    def loss_vlb_gauss(self, t, mean_real, mean_fake, var_real, var_fake):
         std_real = torch.sqrt(var_real)
         std_fake = torch.sqrt(var_fake)
 
@@ -143,12 +184,6 @@ class model_trainer():
             + ((var_real) + (mean_real-mean_fake)**2)/(2*(var_fake)) \
             - torch.tensor(1/2))\
             .flatten(1,-1).mean(-1)
-        
-        # Replace where t = 1
-        output = torch.where(t == 1,
-            -torch.distributions.Normal(mean_fake, std_fake).log_prob(x_0).flatten(1,-1).mean(-1),
-            output
-        )
 
         return output
     
@@ -158,11 +193,13 @@ class model_trainer():
     #   epsilon - True epsilon values of shape (N, C, L, W)
     #   epsilon_pred - Predicted epsilon values of shape (N, C, L, W)
     #   x_t - The noised image at time t of shape (N, C, L, W)
-    #   x_t1 - The unnoised image at time t-1 of shape (N, C, L, W)
     #   t - The value timestep of shape (N)
     # Outputs:
     #   Loss as a scalar over the entire batch
-    def lossFunct(self, epsilon, epsilon_pred, v, x_0, x_t, x_t1, t):
+    def lossFunct(self, epsilon, epsilon_pred, v, x_0, x_t, t):
+        # Put the data on the correct device
+        x_0 = x_0.to(epsilon_pred.device)
+        x_t = x_t.to(epsilon_pred.device)
         
         """
         There's one important note I looked passed when reading the original
@@ -179,27 +216,31 @@ class model_trainer():
         """
 
         # Get the mean and variance from the model
-        mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t, True)
-        var_t_pred = self.model.vs_to_variance(v, t)
+        if self.dev == "cpu":
+            mean_t_pred = self.model.noise_to_mean(epsilon_pred, x_t, t, True)
+            var_t_pred = self.model.vs_to_variance(v, t)
+        else:
+            mean_t_pred = self.model.module.noise_to_mean(epsilon_pred, x_t, t, True)
+            var_t_pred = self.model.module.vs_to_variance(v, t)
 
 
         ### Preparing for the real normal distribution
 
         # Get the scheduler information
-        beta_t = self.model.scheduler.sample_beta_t(t)
-        a_bar_t = self.model.scheduler.sample_a_bar_t(t)
-        a_bar_t1 = self.model.scheduler.sample_a_bar_t1(t)
-        beta_tilde_t = self.model.scheduler.sample_beta_tilde_t(t)
-        sqrt_a_bar_t1 = self.model.scheduler.sample_sqrt_a_bar_t1(t)
-        sqrt_a_t = self.model.scheduler.sample_sqrt_a_t(t)
-
-        # Unsqueezing the values to match shape
-        beta_t = self.model.unsqueeze(beta_t, -1, 3)
-        a_bar_t = self.model.unsqueeze(a_bar_t, -1, 3)
-        a_bar_t1 = self.model.unsqueeze(a_bar_t1, -1, 3)
-        beta_tilde_t = self.model.unsqueeze(beta_tilde_t, -1, 3)
-        sqrt_a_bar_t1 = self.model.unsqueeze(sqrt_a_bar_t1, -1, 3)
-        sqrt_a_t = self.model.unsqueeze(sqrt_a_t, -1, 3)
+        if self.dev == "cpu":
+            beta_t = self.model.scheduler.sample_beta_t(t)
+            a_bar_t = self.model.scheduler.sample_a_bar_t(t)
+            a_bar_t1 = self.model.scheduler.sample_a_bar_t1(t)
+            beta_tilde_t = self.model.scheduler.sample_beta_tilde_t(t)
+            sqrt_a_bar_t1 = self.model.scheduler.sample_sqrt_a_bar_t1(t)
+            sqrt_a_t = self.model.scheduler.sample_sqrt_a_t(t)
+        else:
+            beta_t = self.model.module.scheduler.sample_beta_t(t)
+            a_bar_t = self.model.module.scheduler.sample_a_bar_t(t)
+            a_bar_t1 = self.model.module.scheduler.sample_a_bar_t1(t)
+            beta_tilde_t = self.model.module.scheduler.sample_beta_tilde_t(t)
+            sqrt_a_bar_t1 = self.model.module.scheduler.sample_sqrt_a_bar_t1(t)
+            sqrt_a_t = self.model.module.scheduler.sample_sqrt_a_t(t)
 
         # Get the true mean distribution
         mean_t = ((sqrt_a_bar_t1*beta_t)/(1-a_bar_t))*x_0 +\
@@ -207,7 +248,7 @@ class model_trainer():
         
         # Get the losses
         loss_simple = self.loss_simple(epsilon, epsilon_pred)
-        loss_vlb = self.loss_vlb_gauss(t, mean_t, mean_t_pred.detach(), beta_tilde_t, var_t_pred, x_0)*self.Lambda
+        loss_vlb = self.loss_vlb_gauss(t, mean_t, mean_t_pred.detach(), beta_tilde_t, var_t_pred)*self.Lambda
 
         # Get the combined loss
         loss_comb = loss_simple + loss_vlb
@@ -238,47 +279,76 @@ class model_trainer():
         
     
     
-    # Trains the saved model
+    # Trains the model
     # Inputs:
-    #   X - A batch of images of shape (B, C, L, W)
-    def train(self, X):
+    #   data_path - Path to the data to load in
+    #   num_data - Number of datapoints loaded
+    #   cls_min - What is the nim calss value
+    #   reshapeType - Determines how data should be reshaped
+    def train(self, data_path, num_data, cls_min, reshapeType):
+
+        # Was class information given?
+        if self.dev == "cpu":
+            if self.model.c_emb is not None:
+                useCls = True
+
+                # Class assertion
+                assert self.p_uncond != None, "p_uncond cannot be None when using class information"
+            else:
+                useCls = False
+        else:
+            if self.model.module.c_emb is not None:
+                useCls = True
+
+                # Class assertion
+                assert self.p_uncond != None, "p_uncond cannot be None when using class information"
+            else:
+                useCls = False
 
         # Put the model is train mode
         self.model.train()
-        
-        # Put the data on the cpu
-        X = X.to(cpu)
-        
-        # Should the images be scaled?
-        scaled = True if X.max() > 1.0 else False
+
+        # Create a sampler and loader over the dataset
+        dataset = CustomDataset(data_path, num_data, cls_min, scale=reshapeType, loadMem=self.load_into_mem)
+        if self.dev == "cpu":
+            data_loader = DataLoader(dataset, batch_size=self.batchSize,
+                pin_memory=True, num_workers=0, 
+                drop_last=False, shuffle=True
+            )
+        else:
+            data_loader = DataLoader(dataset, batch_size=self.batchSize,
+            pin_memory=True, num_workers=0, 
+            drop_last=False, sampler=
+                DistributedSampler(dataset, shuffle=True)
+            )
 
         # Losses over epochs
-        self.losses_comb = []
-        self.losses_mean = []
-        self.losses_var = []
-        self.epochs_list = []
+        self.losses_comb = np.array([])
+        self.losses_mean = np.array([])
+        self.losses_var = np.array([])
+        self.steps_list = np.array([])
+
+        # Number of steps taken
+        num_steps = 0
+
+        # Cumulative loss over the batch over each set of steps
+        losses_comb_s = torch.tensor(0.0, requires_grad=False)
+        losses_mean_s = torch.tensor(0.0, requires_grad=False)
+        losses_var_s = torch.tensor(0.0, requires_grad=False)
         
         # Iterate over the desiered number of epochs
         for epoch in range(1, self.epochs+1):
-            # Model saving and graphing
-            if epoch%self.numSaveEpochs == 0:
-                self.model.saveModel(self.saveDir, epoch)
-                self.graph_losses()
+            # Set the epoch number for the dataloader to seed the
+            # randomization of the sampler
+            if self.dev != "cpu":
+                data_loader.sampler.set_epoch(epoch)
 
-            # Cumulative loss over the batch over all steps
-            losses_comb_s = torch.tensor(0.0, requires_grad=False)
-            losses_mean_s = torch.tensor(0.0, requires_grad=False)
-            losses_var_s = torch.tensor(0.0, requires_grad=False)
-
-            # Iterate over all the steps before updating the model
-            for step in range(0, self.numSteps):
-                # Get a sample of `batchSize` number of images and put
-                # it on the correct device
-                batch_x_0 = X[torch.randperm(X.shape[0])[:self.batchSize]].to(self.device)
-
-                # Scale the images
-                if scaled:
-                    batch_x_0 = reduce_image(batch_x_0)
+            # Iterate over all data
+            for step, data in enumerate(data_loader):
+                batch_x_0, batch_class = data
+                
+                # Increate the number of steps taken
+                num_steps += 1
                 
                 # Get values of t to noise the data
                 # Sample using weighted values if each t has 10 loss values
@@ -288,26 +358,37 @@ class model_trainer():
                     p_t = p_t / p_t.sum()
 
                     # Sample the values of t
-                    t_vals = torch.tensor(np.random.choice(self.t_vals, size=self.batchSize, p=p_t), device=batch_x_0.device)
-                # Sample uniformly until we get to that point or if importantce
+                    t_vals = torch.tensor(np.random.choice(self.t_vals, size=batch_x_0.shape[0], p=p_t), device=batch_x_0.device)
+                # Sample uniformly until we get to that point or if importance
                 # sampling is not used
                 else:
-                    t_vals = self.T_dist.sample((self.batchSize,)).to(self.device)
+                    t_vals = self.T_dist.sample((batch_x_0.shape[0],)).to(self.device)
                     t_vals = torch.round(t_vals).to(torch.long)
+
+
+                # Probability of class embeddings being the null embedding
+                if self.p_uncond != None:
+                    probs = torch.rand(batch_x_0.shape[0])
+                    nullCls = torch.where(probs < self.p_uncond, 1, 0).to(torch.bool).to(self.device)
+                else:
+                    nullCls = None
                 
-                # Noise the batch to time t-1
-                batch_x_t1, epsilon_t1 = self.model.noise_batch(batch_x_0, t_vals-1)
-                
+
                 # Noise the batch to time t
-                batch_x_t, epsilon_t = self.model.noise_batch(batch_x_0, t_vals)
+                with torch.no_grad():
+                    if self.dev == "cpu":
+                        batch_x_t, epsilon_t = self.model.noise_batch(batch_x_0, t_vals)
+                    else:
+                        batch_x_t, epsilon_t = self.model.module.noise_batch(batch_x_0, t_vals)
                 
                 # Send the noised data through the model to get the
                 # predicted noise and variance for batch at t-1
-                epsilon_t1_pred, v_t1_pred = self.model(batch_x_t, t_vals)
-                
+                epsilon_t1_pred, v_t1_pred = self.model(batch_x_t, t_vals, 
+                    batch_class if useCls else None, nullCls)
+
                 # Get the loss
                 loss, loss_mean, loss_var = self.lossFunct(epsilon_t, epsilon_t1_pred, v_t1_pred, 
-                                    batch_x_0, batch_x_t, batch_x_t1, t_vals)
+                                    batch_x_0, batch_x_t, t_vals)
 
                 # Scale the loss to be consistent with the batch size. If the loss
                 # isn't scaled, then the loss will be treated as an independent
@@ -325,38 +406,59 @@ class model_trainer():
                 losses_comb_s += loss.cpu().detach()
                 losses_mean_s += loss_mean.cpu().detach()
                 losses_var_s += loss_var.cpu().detach()
-            
-            # Update the model using all losses over the steps
-            self.optim.step()
-            self.optim.zero_grad()
 
-            # Save the loss values
-            self.losses_comb.append(losses_comb_s.item())
-            self.losses_mean.append(losses_mean_s.item())
-            self.losses_var.append(losses_var_s.item())
-            self.epochs_list.append(epoch)
+                # If the number of steps taken is a multiple of the number
+                # of desired steps, update the models
+                if num_steps%self.numSteps == 0:
+                    # Update the model using all losses over the steps
+                    self.optim.step()
+                    self.optim.zero_grad()
+
+                    if is_main_process():
+                        print(f"step #{num_steps}   Latest loss estimate: {round(losses_comb_s.cpu().detach().item(), 6)}")
+
+                    # Save the loss values
+                    self.losses_comb = np.append(self.losses_comb, losses_comb_s.item())
+                    self.losses_mean = np.append(self.losses_mean, losses_mean_s.item())
+                    self.losses_var = np.append(self.losses_var, losses_var_s.item())
+                    self.steps_list = np.append(self.steps_list, num_steps)
+
+                    # Reset the cumulative step loss
+                    losses_comb_s *= 0
+                    losses_mean_s *= 0
+                    losses_var_s *= 0
+
+
+                # Save the model and graph every number of desired steps
+                if num_steps%self.numSaveSteps == 0 and is_main_process():
+                    if self.dev == "cpu":
+                        self.model.saveModel(self.saveDir, epoch, num_steps)
+                    else:
+                        self.model.module.saveModel(self.saveDir, epoch, num_steps)
+                    self.graph_losses()
+
+                    print("Saving model")
             
-            print(f"Loss at epoch #{epoch}  Combined: {round(losses_comb_s.item(), 4)}    Mean: {round(losses_mean_s.item(), 4)}    Variance: {round(losses_var_s.item(), 6)}")
+            if is_main_process():
+                print(f"Loss at epoch #{epoch}, step #{num_steps}, update #{num_steps/self.numSteps}\n"+\
+                        f"Combined: {round(self.losses_comb[-10:].mean(), 4)}    "\
+                        f"Mean: {round(self.losses_mean[-10:].mean(), 4)}    "\
+                        f"Variance: {round(self.losses_var[-10:].mean(), 6)}\n\n")
     
 
 
 
-    # Graph losses function for a thread
-    def graph_losses_helper(self, fig, ax):
+    # Graph the losses through training
+    def graph_losses(self):
+        plt.clf()
+        fig, ax = plt.subplots()
+
         ax.set_title("Losses over epochs")
         ax.set_ylabel("Loss")
-        ax.set_xlabel("Epoch")
+        ax.set_xlabel("Step")
         # ax.plot(self.epochs_list, self.losses_comb, label="Combined loss")
-        ax.plot(self.epochs_list, self.losses_mean, label="Mean loss")
+        ax.plot(self.steps_list, self.losses_mean, label="Mean loss")
         # ax.plot(self.epochs_list, self.losses_var, label="Variance loss")
         ax.legend()
         fig.savefig(self.saveDir + os.sep + "lossGraph.png", format="png")
         plt.close(fig)
-
-    # Graph the losses through training
-    def graph_losses(self):
-        # Async saving
-        plt.clf()
-        fig, ax = plt.subplots()
-        thr = threading.Thread(target=self.graph_losses_helper, args=(fig, ax))
-        thr.start()

@@ -1,13 +1,22 @@
+# Realtive import
+import sys
+sys.path.append('../helpers')
+sys.path.append('../blocks')
+
 import torch
 from torch import nn
 from .U_Net import U_Net
-from ..helpers.image_rescale import reduce_image, unreduce_image
-from ..blocks.PositionalEncoding import PositionalEncoding
+try:
+    from helpers.image_rescale import reduce_image, unreduce_image
+    from blocks.PositionalEncoding import PositionalEncoding
+    from blocks.convNext import convNext
+except ModuleNotFoundError:
+    from ..helpers.image_rescale import reduce_image, unreduce_image
+    from ..blocks.PositionalEncoding import PositionalEncoding
+    from ..blocks.convNext import convNext
 import os
 import json
-import threading
-from ..blocks.convNext import convNext
-from .Variance_Scheduler import Variance_Scheduler, DDIM_Scheduler
+from .Variance_Scheduler import DDIM_Scheduler
 from tqdm import tqdm
 
 
@@ -20,14 +29,14 @@ class diff_model(nn.Module):
     # embCh - Number of channels to embed the batch to
     # chMult - Multiplier to scale the number of channels by
     #          for each up/down sampling block
-    # num_heads - Number of heads in each multi-head non-local block
     # num_res_blocks - Number of residual blocks on the up/down path
     # T - Max number of diffusion steps
     # beta_sched - Scheduler for the beta noise term (linear or cosine)
     # useDeep - True to use deep residual blocks, False to use not deep residual blocks
-    # t_dim - Embedding dimenion for the timesteps
+    # t_dim - Embedding dimension for the timesteps
     # device - Device to put the model on (gpu or cpu)
-    # useDeep - Use a deep version of the model or a shallow version
+    # c_dim - Embedding dimension for the class embeddings (None to not use class embeddings)
+    # num_classes - Number of possible classes the network will work with
     # dropoutRate - Rate to apply dropout to the U-net model
     # step_size - Step size to take when generating images. This is 1 for
     #        normal generation, but a greater integer for faster generation.
@@ -35,8 +44,9 @@ class diff_model(nn.Module):
     # DDIM_scale - Scale to transition between a DDIM, DDPM, or in between.
     #              use 0 for pure DDIM and 1 for pure DDPM.
     #              Note: This is not used for training
-    def __init__(self, inCh, embCh, chMult, num_heads, num_res_blocks,
-                 T, beta_sched, t_dim, device, useDeep=False, dropoutRate=0.0, 
+    def __init__(self, inCh, embCh, chMult, num_res_blocks,
+                 T, beta_sched, t_dim, device, c_dim=None, 
+                 num_classes=None, dropoutRate=0.0, 
                  step_size=1, DDIM_scale=0.5):
         super(diff_model, self).__init__()
         
@@ -44,49 +54,67 @@ class diff_model(nn.Module):
         self.inCh = inCh
         self.step_size = step_size
         self.DDIM_scale = DDIM_scale
+        self.num_classes = num_classes
 
         assert step_size > 0 and step_size <= T, "Step size must be in the range [1, T]"
         assert DDIM_scale >= 0, "DDIM scale must be greater than or equal to 0"
+        assert (c_dim==None and num_classes==None) or \
+            (c_dim!=None and num_classes!=None), \
+            "c_dim and num_classes must both be specified for class information to be used"
         
         # Important default parameters
         self.defaults = {
             "inCh": inCh,
             "embCh": embCh,
             "chMult": chMult,
-            "num_heads": num_heads,
             "num_res_blocks": num_res_blocks,
             "T": T,
             "beta_sched": beta_sched,
             "t_dim": t_dim,
-            "useDeep": useDeep
+            "c_dim": c_dim,
+            "num_classes": num_classes
         }
         
         # Convert the device to a torch device
-        if device.lower() == "gpu":
-            if torch.cuda.is_available():
-                dev = device.lower()
-                device = torch.device('cuda:0')
+        if type(device) is str:
+            if device.lower() == "gpu":
+                if torch.cuda.is_available():
+                    dev = device.lower()
+                    try:
+                        local_rank = int(os.environ['LOCAL_RANK'])
+                    except KeyError:
+                        local_rank = 0
+                    device = torch.device(f"cuda:{local_rank}")
+                else:
+                    dev = "cpu"
+                    print("GPU not available, defaulting to CPU. Please ignore this message if you do not wish to use a GPU\n")
+                    device = torch.device('cpu')
             else:
                 dev = "cpu"
-                print("GPU not available, defaulting to CPU. Please ignore this message if you do not wish to use a GPU\n")
                 device = torch.device('cpu')
+            self.device = device
+            self.dev = dev
         else:
-            dev = device.lower()
-            device = torch.device('cpu')
-        self.device = device
-        self.dev = dev
+            self.device = device
+            self.dev = "cpu" if device.type == "cpu" else "gpu"
         
         # Convert T to a tensor
         self.T = torch.tensor(T, device=device)
         
         # U_net model
-        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_heads, num_res_blocks, useDeep, dropoutRate).to(device)
+        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_res_blocks, c_dim, dropoutRate).to(device)
         
         # DDIM Variance scheduler for values of beta and alpha
         self.scheduler = DDIM_Scheduler(beta_sched, T, self.step_size, self.device)
             
         # Used to embed the values of t so the model can use it
         self.t_emb = PositionalEncoding(t_dim).to(device)
+
+        # Used to embed the values of c so the model can use it
+        if c_dim != None:
+            self.c_emb = nn.Linear(self.num_classes, c_dim, bias=False).to(device)
+        else:
+            self.c_emb = None
 
         # Output convolutions for the mean and variance
         # self.out_mean = nn.Conv2d(inCh, inCh, 3, padding=1, groups=inCh)
@@ -114,32 +142,19 @@ class diff_model(nn.Module):
     #   Batch of noised images of shape (N, C, L, W)
     #   Noise added to the images of shape (N, C, L, W)
     def noise_batch(self, X, t):
+        # Ensure the data is on the correct device
+        X = X.to(self.device)
+        t = t.to(self.device)
+
         # Sample gaussian noise
         epsilon = torch.randn_like(X, device=self.device)
         
         # The value of a_bar_t at timestep t depending on the scheduler
-        sqrt_a_bar_t = self.unsqueeze(self.scheduler.sample_sqrt_a_bar_t(t), -1, 3)
-        sqrt_1_minus_a_bar_t = self.unsqueeze(self.scheduler.sample_sqrt_1_minus_a_bar_t(t), -1, 3)
+        sqrt_a_bar_t = self.scheduler.sample_sqrt_a_bar_t(t)
+        sqrt_1_minus_a_bar_t = self.scheduler.sample_sqrt_1_minus_a_bar_t(t)
         
         # Noise the images
         return sqrt_a_bar_t*X + sqrt_1_minus_a_bar_t*epsilon, epsilon
-    
-    
-    
-    # Get the noise for a batch of images
-    # Inputs:
-    #   noise_shape - Shape of desired tensor of noise
-    #   t - Batch of t values of shape (N)
-    # Outputs:
-    #   epsilon - Batch of noised images of the given shape
-    def sample_noise(self, noise_shape, t):
-        # Make sure t isn't too large
-        t = torch.min(t, self.T)
-        
-        # Sample gaussian noise
-        epsilon = torch.randn(noise_shape, device=self.device)
-        
-        return epsilon
 
 
 
@@ -161,7 +176,6 @@ class diff_model(nn.Module):
         
         # Get the beta and a values for the batch of t values
         beta_t = self.scheduler.sample_beta_t(t)
-        a_t = self.scheduler.sample_a_t(t)
         sqrt_a_t = self.scheduler.sample_sqrt_a_t(t)
         a_bar_t = self.scheduler.sample_a_bar_t(t)
         sqrt_a_bar_t = self.scheduler.sample_sqrt_a_bar_t(t)
@@ -169,15 +183,7 @@ class diff_model(nn.Module):
         a_bar_t1 = self.scheduler.sample_a_bar_t1(t)
         sqrt_a_bar_t1 = self.scheduler.sample_sqrt_a_bar_t1(t)
 
-        # Make sure everything is in the correct shape
-        beta_t = self.unsqueeze(beta_t, -1, 3)
-        a_t = self.unsqueeze(a_t, -1, 3)
-        sqrt_a_t = self.unsqueeze(sqrt_a_t, -1, 3)
-        a_bar_t = self.unsqueeze(a_bar_t, -1, 3)
-        sqrt_a_bar_t = self.unsqueeze(sqrt_a_bar_t, -1, 3)
-        sqrt_1_minus_a_bar_t = self.unsqueeze(sqrt_1_minus_a_bar_t, -1, 3)
-        a_bar_t1 = self.unsqueeze(a_bar_t1, -1, 3)
-        sqrt_a_bar_t1 = self.unsqueeze(sqrt_a_bar_t1, -1, 3)
+
         if len(t.shape) == 1:
             t = self.unsqueeze(t, -1, 3)
 
@@ -206,18 +212,8 @@ class diff_model(nn.Module):
     def vs_to_variance(self, v, t):
 
         # Get the scheduler information
-        beta_t = self.unsqueeze(self.scheduler.sample_beta_t(t), -1, 3)
-        beta_tilde_t = self.unsqueeze(self.scheduler.sample_beta_tilde_t(t), -1, 3)
-
-        """
-        Note: The authors claim that v stayed in the range of values
-        it should without any type of restraint. I found that this was
-        the case at later stages of t, but at early stages of t (from about t = 20 to t = 0),
-        the value of v blew up. For some reason, when t is small, the model
-        has a very hard time learning a good representation of v.
-        So, I am adding a restraint to keep it between 0 and 1.
-        """
-        # v = v.sigmoid()
+        beta_t = self.scheduler.sample_beta_t(t)
+        beta_tilde_t = self.scheduler.sample_beta_tilde_t(t)
         
         # Return the variance value
         return torch.exp(torch.clamp(v*torch.log(beta_t) + (1-v)*torch.log(beta_tilde_t), torch.tensor(-30, device=beta_t.device), torch.tensor(30, device=beta_t.device)))
@@ -226,12 +222,22 @@ class diff_model(nn.Module):
         
     # Input:
     #   x_t - Batch of images of shape (B, C, L, W)
-    #   t - (Optional) Batch of t values of shape (N) or a single t value
+    #   t - Batch of t values of shape (N) or a single t value. Note
+    #       that this t value represents the timestep the model is currently at.
+    #   c - (Optional) Batch of c values of shape (N)
+    #   nullCls - (Optional) Binary tensor of shape (N) where a 1 represents a null class
     # Outputs:
     #   noise - Batch of noise predictions of shape (B, C, L, W)
     #   v - Batch of v predictions of shape (B, C, L, W)
-    def forward(self, x_t, t):
-        
+    def forward(self, x_t, t, c=None, nullCls=None):
+        # Ensure the data is on the correct device
+        x_t = x_t.to(self.device)
+        t = t.to(self.device)
+        if c != None:
+            c = c.to(self.device)
+        if nullCls != None:
+            nullCls = nullCls.to(self.device)
+
         # Make sure t is in the correct form
         if t != None:
             if type(t) == int or type(t) == float:
@@ -248,10 +254,22 @@ class diff_model(nn.Module):
             # Encode the timesteps
             if len(t.shape) == 1:
                 t = self.t_emb(t)
+
+
+        # Embed the class info
+        if type(c) != type(None):
+            # One hot encode the class embeddings
+            c = torch.nn.functional.one_hot(c.to(torch.int64), self.num_classes).to(self.device).to(torch.float)
+
+            c = self.c_emb(c)
+
+            # Apply the null embeddings (zeros)
+            if type(nullCls) != type(None):
+                c[nullCls == 1] *= 0
         
         # Send the input through the U-net to get
         # the model output
-        out = self.unet(x_t, t)
+        out = self.unet(x_t, t, c)
 
         # Get the noise and v predictions
         # for the image x_t-1
@@ -288,38 +306,103 @@ class diff_model(nn.Module):
     # Given a batch of images, unoise them using the current models's state
     # Inputs:
     #   x_t - Batch of images at the given value of t of shape (N, C, L, W)
-    #   t - Batch of t values of shape (N) or a single t value
+    #   t_DDIM - Batch of DDIM t values of shape (N) or a single t value
+    #            DDIM t values are in the range [1:T//step_size]
+    #   t_DDPM - Batch of DDPM t values of shape (N) or a single t value
+    #            DDPM t values are in the range [1:T]
+    #   class_label - (optional and only used if the model uses class info) 
+    #                 Class we want the model to generate
+    #                 Use -1 to generate without a class
+    #   w - (optional and only used if the model uses class info) 
+    #       Classifier guidance scale factor. Use 0 for no classifier guidance.
+    #   corrected - True to put a limit on generation. False to not restrain generation
     # Outputs:
     #   Image of shape (N, C, L, W) at timestep t-1, unnoised by one timestep
-    def unnoise_batch(self, x_t, t):
+    def unnoise_batch(self, x_t, t_DDIM, t_DDPM, class_label=-1, w=0.0, corrected=False):
+        # The model is trained on the DDPM scale while the scheduler
+        # uses the DDIM scale as indices. Note that we want the model
+        # to think it is at a single timestep before the timestep it generates
+        # rather than the current timestep it is actually at. So if a step
+        # is 20 and T is 1000, the first step starts at 981 rather than
+        # 1000 to make the model think it needs to generate an image
+        # from 981 to 981 rather than from 1000 to 999. So the last step
+        # should be t=1 meaning it generates iamges from t=1 -> t=0. Note that the model
+        # is conditioned on the timestep it is currently at, so this works.
+        
+        
+        
+        # w assertion
+        assert w >= 0.0, "The value of w (classifier guidance factor) cannot be less than 0."
+
+        # class label assertion
+        class_label = int(class_label)
+        assert class_label > -2 and class_label < self.num_classes,\
+            f"The value of class_label must be in the range [-1,{self.num_classes-1}]"
+
         # Put the model in eval mode
         self.eval()
         
         # Make sure t is in the correct form
-        if type(t) == int or type(t) == float:
-            t = torch.tensor(t).repeat(x_t.shape[0]).to(torch.long)
-        elif type(t) == list and type(t[0]) == int:
-            t = torch.tensor(t).to(torch.long)
-        elif type(t) == torch.Tensor:
-            if len(t.shape) == 0:
-                t = t.repeat(x_t.shape[0]).to(torch.long)
+        if type(t_DDPM) == int or type(t_DDPM) == float:
+            t_DDPM = torch.tensor(t_DDPM).repeat(x_t.shape[0]).to(torch.long)
+        elif type(t_DDPM) == list and type(t_DDPM[0]) == int:
+            t_DDPM = torch.tensor(t_DDPM).to(torch.long)
+        elif type(t_DDPM) == torch.Tensor:
+            if len(t_DDPM.shape) == 0:
+                t_DDPM = t_DDPM.repeat(x_t.shape[0]).to(torch.long)
         else:
-            print(f"t values must either be a scalar, list of scalars, or a tensor of scalars, not type: {type(t)}")
+            print(f"t_DDPM values must either be a scalar, list of scalars, or a tensor of scalars, not type: {type(t_DDPM)}")
+            return
+        if type(t_DDIM) == int or type(t_DDIM) == float:
+            t_DDIM = torch.tensor(t_DDIM).repeat(x_t.shape[0]).to(torch.long)
+        elif type(t_DDIM) == list and type(t_DDIM[0]) == int:
+            t_DDIM = torch.tensor(t_DDIM).to(torch.long)
+        elif type(t_DDIM) == torch.Tensor:
+            if len(t_DDIM.shape) == 0:
+                t_DDIM = t_DDIM.repeat(x_t.shape[0]).to(torch.long)
+        else:
+            print(f"t_DDIM values must either be a scalar, list of scalars, or a tensor of scalars, not type: {type(t_DDIM)}")
             return
         
         x_t = x_t.to(self.device)
-        t = t.to(self.device)
-
-        # t is currently in DDIM state. Convert it to DDPM state
-        # which is what the model's trained on to get the
-        # correct noise and v prediction.
-        t_enc = t*self.step_size + 1
+        t_DDPM = t_DDPM.to(self.device)
+        t_DDIM = t_DDIM.to(self.device)
         
-        # Get the model predictions for the noise and v values
-        noise_t, v_t = self.forward(x_t, t_enc)
+
+
+        ### Get the model predictions for the noise and v values
+
+        # If the number of classes is not defined, the model
+        # is not a conditioned model.
+        if self.num_classes == None:
+            noise_t, v_t = self.forward(x_t, t_DDPM)
+
+        # If the number of classes is defined, the model is a
+        # conditioned model
+        else:
+            # If the class label is -1, we only want the
+            # unconditioned data
+            if class_label == -1:
+                noise_t, v_t = self.forward(x_t, t_DDPM, torch.tensor([0]), torch.tensor([1]))
+
+            # If the class label is not -1, we want both
+            # the conditioned and unconditioned data
+            else:
+                # Unconditioned sample (sample on null class)
+                if w == 0:
+                    noise_t_un = v_t_un = 0
+                else:
+                    noise_t_un, v_t_un = self.forward(x_t, t_DDPM, torch.tensor([0]), torch.tensor([1]))
+                
+                # Conditional sample
+                noise_t_cond, v_t_cond = self.forward(x_t, t_DDPM, torch.tensor([class_label]), torch.tensor([0]))
+
+                # Mixed sample between unconditioned and conditioned
+                noise_t = (1+w)*noise_t_cond - w*noise_t_un
+                v_t = (1+w)*v_t_cond - w*v_t_un
 
         # Convert the v prediction variance
-        var_t = self.vs_to_variance(v_t, t)
+        var_t = self.vs_to_variance(v_t, t_DDIM)
 
 
 
@@ -328,41 +411,26 @@ class diff_model(nn.Module):
 
         # Variance for a DDPM to a DDIM
         # Get the beta and a values for the batch of t values
-        beta_t = self.scheduler.sample_beta_t(t)
-        a_t = self.scheduler.sample_a_t(t)
-        sqrt_a_t = self.scheduler.sample_sqrt_a_t(t)
-        a_bar_t = self.scheduler.sample_a_bar_t(t)
-        sqrt_a_bar_t = self.scheduler.sample_sqrt_a_bar_t(t)
-        sqrt_1_minus_a_bar_t = self.scheduler.sample_sqrt_1_minus_a_bar_t(t)
-        a_bar_t1 = self.scheduler.sample_a_bar_t1(t)
-        sqrt_a_bar_t1 = self.scheduler.sample_sqrt_a_bar_t1(t)
-        beta_tilde_t = self.scheduler.sample_beta_tilde_t(t)
-
-        # Make sure everything is in the correct shape
-        beta_t = self.unsqueeze(beta_t, -1, 3)
-        a_t = self.unsqueeze(a_t, -1, 3)
-        sqrt_a_t = self.unsqueeze(sqrt_a_t, -1, 3)
-        a_bar_t = self.unsqueeze(a_bar_t, -1, 3)
-        sqrt_a_bar_t = self.unsqueeze(sqrt_a_bar_t, -1, 3)
-        sqrt_1_minus_a_bar_t = self.unsqueeze(sqrt_1_minus_a_bar_t, -1, 3)
-        a_bar_t1 = self.unsqueeze(a_bar_t1, -1, 3)
-        sqrt_a_bar_t1 = self.unsqueeze(sqrt_a_bar_t1, -1, 3)
-        beta_tilde_t = self.unsqueeze(beta_tilde_t, -1, 3)
+        sqrt_a_bar_t = self.scheduler.sample_sqrt_a_bar_t(t_DDIM)
+        sqrt_1_minus_a_bar_t = self.scheduler.sample_sqrt_1_minus_a_bar_t(t_DDIM)
+        a_bar_t1 = self.scheduler.sample_a_bar_t1(t_DDIM)
+        sqrt_a_bar_t1 = self.scheduler.sample_sqrt_a_bar_t1(t_DDIM)
+        beta_tilde_t = self.scheduler.sample_beta_tilde_t(t_DDIM)
 
 
 
-        ### This is the DDIM process. x_0 blows up if not restricted, so x_0
-        ### is constrained between -1.5 and 1.5 similar to the DDPM implementation.
+        ### DDIM process
+
         # The variance the model predicted and the
         # variance the model did not predict
         var_t = self.DDIM_scale*var_t
         beta_tilde_t = self.DDIM_scale*beta_tilde_t
 
-        # Sometimes the noise blows up. Since the noise prediction should follow a normal
-        # distribution, sample a normal distribution of the same shape and restrict the
-        # predicted noise to the min and max of that distribution.
-        samp = torch.randn_like(noise_t)
-        noise_t = noise_t.clamp(samp.min(), samp.max())
+        # # Sometimes the noise blows up. Since the noise prediction should follow a normal
+        # # distribution, sample a normal distribution of the same shape and restrict the
+        # # predicted noise to the min and max of that distribution.
+        # samp = torch.randn_like(noise_t)
+        # noise_t = noise_t.clamp(samp.min(), samp.max())
 
         # Get the x_0 and x_t_dir predictions. Note that the
         # x_t direction prediction uses the beta_tilde_t value
@@ -370,7 +438,8 @@ class diff_model(nn.Module):
         # but if the predicted variance is used, this isn't necessarily true.
         # The predicted variance is used as in the improved DDPM paper
         x_0_pred = ((x_t-sqrt_1_minus_a_bar_t*noise_t)/sqrt_a_bar_t)
-        # x_0_pred = x_0_pred.clamp(-1.5, 1.5)
+        if corrected:
+            x_0_pred = x_0_pred.clamp(-1, 1)
         x_t_dir_pred = torch.sqrt(torch.clamp(1-a_bar_t1-beta_tilde_t, 0, torch.inf))*noise_t
         random_noise = torch.randn((noise_t.shape), device=self.device)*torch.sqrt(var_t)
 
@@ -395,21 +464,43 @@ class diff_model(nn.Module):
 
 
     # Sample a batch of generated samples from the model
+    # Params:
+    #   batchSize - Number of images to generate in parallel
+    #   class_label - (optional and only used if the model uses class info) 
+    #                 Class we want the model to generate
+    #                 Use -1 to generate without a class
+    #   w - (optional and only used if the model uses class info) 
+    #       Classifier guidance scale factor. Use 0 for no classifier guidance.
+    #   save_intermediate - Return intermediate generation states
+    #                       to create a gif along with the image?
+    #   use_tqdm - Show a progress bar or not
+    #   unreduce - True to unreduce the image to the range [0, 255],
+    #              False to keep the image in the range [-1, 1]
+    #   corrected - True to put a limit on generation. False to not restrain generation
+    # Outputs:
+    #   output - Output images of shape (N, C, L, W)
+    #   imgs - (only if save_intermediate=True) list of iternediate
+    #          outputs for the first image i the batch of shape (steps, C, L, W)
     @torch.no_grad()
-    def sample_imgs(self, batchSize, save_intermediate=False, use_tqdm=False, unreduce=False):
+    def sample_imgs(self, batchSize, class_label=-1, w=0.0, save_intermediate=False, use_tqdm=False, unreduce=False, corrected=False):
         # Make sure the model is in eval mode
         self.eval()
 
         # The initial image is pure noise
         output = torch.randn((batchSize, 3, 64, 64)).to(self.device)
 
-        # Iterate T//step_size times to denoise the images
+        # Iterate T//step_size times to denoise the images (sampling from [T:1])
         imgs = []
-        for t in tqdm(range(self.T, 0, -self.step_size)) if use_tqdm else range(self.T, 0, -self.step_size):
-            output = self.unnoise_batch(output, (t//self.step_size)-1)
+        num_steps = len(list(reversed(range(1, self.T+1, self.step_size))))
+        for t_DDIM, t_DDPM in tqdm(zip(reversed(range(1, num_steps+1)), reversed(range(1, self.T+1, self.step_size))), total=num_steps) \
+            if use_tqdm else zip(reversed(range(1, num_steps+1)), reversed(range(1, self.T+1, self.step_size))):
+
+            # Unoise by 1 step according to the DDIM and DDPM scheduler
+            output = self.unnoise_batch(output, t_DDIM, t_DDPM, class_label, w, corrected)
             if save_intermediate:
                 imgs.append(unreduce_image(output[0]).cpu().detach().int().clamp(0, 255).permute(1, 2, 0))
         
+        # Unreduce the image from [-1:1] to [0:255]
         if unreduce:
             output = unreduce_image(output).clamp(0, 255)
 
@@ -418,13 +509,19 @@ class diff_model(nn.Module):
 
 
     
-    def saveModel_T(self, saveDir, epoch=None):
+    # Save the model
+    def saveModel(self, saveDir, epoch=None, step=None):
+        # Craft the save string
+        saveFile = "model"
+        saveDefFile = "model_params"
         if epoch:
-            saveFile = f"model_{epoch}.pkl"
-            saveDefFile = f"model_params_{epoch}.json"
-        else:
-            saveFile = "model.pkl"
-            saveDefFile = "model_params.json"
+            saveFile += f"_{epoch}e"
+            saveDefFile += f"_{epoch}e"
+        if step:
+            saveFile += f"_{step}s"
+            saveDefFile += f"_{step}s"
+        saveFile += ".pkl"
+        saveDefFile += ".json"
         
         # Check if the directory exists. If it doesn't
         # create it
@@ -438,12 +535,6 @@ class diff_model(nn.Module):
         with open(saveDir + os.sep + saveDefFile, "w") as f:
             json.dump(self.defaults, f)
     
-    # Save the model
-    def saveModel(self, saveDir, epoch=None):
-        # Async saving
-        thr = threading.Thread(target=self.saveModel_T, args=(saveDir, epoch), kwargs={})
-        thr.start()
-    
     
     # Load the model
     def loadModel(self, loadDir, loadFile, loadDefFile=None):
@@ -454,7 +545,7 @@ class diff_model(nn.Module):
             D = self.defaults
 
             # Reinitialize the model with the new defaults
-            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_heads"], D["num_res_blocks"], D["T"], D["beta_sched"], D["t_dim"], self.dev, bool(D["useDeep"]), step_size=self.step_size, DDIM_scale=self.DDIM_scale)
+            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_res_blocks"], D["T"], D["beta_sched"], D["t_dim"], self.device, D["c_dim"], D["num_classes"], 0.0, step_size=self.step_size, DDIM_scale=self.DDIM_scale)
 
             # Load the model state
             self.load_state_dict(torch.load(loadDir + os.sep + loadFile, map_location=self.device))
