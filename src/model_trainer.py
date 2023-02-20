@@ -432,9 +432,9 @@ class model_trainer():
                 # Save the model and graph every number of desired steps
                 if num_steps%self.numSaveSteps == 0 and is_main_process():
                     if self.dev == "cpu":
-                        self.model.saveModel(self.saveDir, epoch, num_steps)
+                        self.model.saveModel(self.saveDir, self.optim, epoch, num_steps)
                     else:
-                        self.model.module.saveModel(self.saveDir, epoch, num_steps)
+                        self.model.module.saveModel(self.saveDir, self.optim, epoch, num_steps)
                     self.graph_losses()
 
                     print("Saving model")

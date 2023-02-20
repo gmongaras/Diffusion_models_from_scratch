@@ -9,9 +9,13 @@ def train():
     
     ## Model params
     inCh = 3
-    embCh = 192
+    embCh = 128
     chMult = 1
-    num_res_blocks = 3
+    num_blocks = 3
+    blk_types = ["res", "res", "clsAtn", "chnAtn"]
+                        # blk_types - How should the residual block be structured 
+                        #             (list of "res", "conv", "clsAtn", and/or "chnAtn". 
+                        #              Ex: ["res", "res", "conv", "clsAtn", "chnAtn"] 
     T = 1000
     Lambda = 0.001
     beta_sched = "cosine"
@@ -67,7 +71,7 @@ def train():
     
     
     ### Model Creation
-    model = diff_model(inCh, embCh, chMult, num_res_blocks, T, beta_sched, t_dim, device, c_dim, num_classes, dropoutRate)
+    model = diff_model(inCh, embCh, chMult, num_blocks, blk_types, T, beta_sched, t_dim, device, c_dim, num_classes, dropoutRate)
     
     # Optional model loading
     if loadModel == True:

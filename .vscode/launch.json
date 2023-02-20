@@ -9,9 +9,9 @@
             "type": "python",
             "request": "launch",
             // "program": "C:/Users/gabri/anaconda3/Scripts/torchrun.exe",
-            // "program": "/home/gmongaras/anaconda3/envs/main/bin/torchrun",
+            "program": "/home/gmongaras/anaconda3/envs/main/bin/torchrun",
             // "module": "data.make_massive_tensor",
-            "module": "src.infer",
+            // "module": "src.infer",
             // "module": "eval.compute_FID",
             // "module": "eval.compute_imagenet_stats",
             // "module": "eval.compute_model_stats",
@@ -19,10 +19,10 @@
             // "module": "tests.diff_model_noise_test",
             "console": "integratedTerminal",
             "justMyCode": false,
-            // "args": [
-            //     "src/train.py",
-            //     "()"
-            // ]
+            "args": [
+                "--nproc_per_node=1",
+                "src/train.py"
+            ]
         }
     ]
 }

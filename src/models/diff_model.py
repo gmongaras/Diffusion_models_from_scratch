@@ -29,7 +29,11 @@ class diff_model(nn.Module):
     # embCh - Number of channels to embed the batch to
     # chMult - Multiplier to scale the number of channels by
     #          for each up/down sampling block
-    # num_res_blocks - Number of residual blocks on the up/down path
+    # num_blocks - Number of blocks on the up/down path
+    # blk_types - How should the residual block be structured 
+    #             (list of "res", "conv", "clsAtn", and/or "chnAtn". 
+    #              Ex: ["res", "res", "conv", "clsAtn", "chnAtn"] 
+    #              will make unet blocks with res-res->conv->clsAtn->chnAtn)
     # T - Max number of diffusion steps
     # beta_sched - Scheduler for the beta noise term (linear or cosine)
     # useDeep - True to use deep residual blocks, False to use not deep residual blocks
@@ -44,10 +48,15 @@ class diff_model(nn.Module):
     # DDIM_scale - Scale to transition between a DDIM, DDPM, or in between.
     #              use 0 for pure DDIM and 1 for pure DDPM.
     #              Note: This is not used for training
-    def __init__(self, inCh, embCh, chMult, num_res_blocks,
-                 T, beta_sched, t_dim, device, c_dim=None, 
-                 num_classes=None, dropoutRate=0.0, 
-                 step_size=1, DDIM_scale=0.5):
+    # start_epoch - Epoch to start on. Doesn't do much besides 
+    #               change the name of the saved output file
+    # start_epoch - Step to start on. Doesn't do much besides 
+    #               change the name of the saved output file
+    def __init__(self, inCh, embCh, chMult, num_blocks,
+                 blk_types, T, beta_sched, t_dim, device, 
+                 c_dim=None, num_classes=None, dropoutRate=0.0, 
+                 step_size=1, DDIM_scale=0.5,
+                 start_epoch=1, start_step=0):
         super(diff_model, self).__init__()
         
         self.beta_sched = beta_sched
@@ -67,12 +76,15 @@ class diff_model(nn.Module):
             "inCh": inCh,
             "embCh": embCh,
             "chMult": chMult,
-            "num_res_blocks": num_res_blocks,
+            "num_blocks": num_blocks,
+            "blk_types": blk_types,
             "T": T,
             "beta_sched": beta_sched,
             "t_dim": t_dim,
             "c_dim": c_dim,
-            "num_classes": num_classes
+            "num_classes": num_classes,
+            "epoch": start_epoch,
+            "step": start_step
         }
         
         # Convert the device to a torch device
@@ -102,7 +114,7 @@ class diff_model(nn.Module):
         self.T = torch.tensor(T, device=device)
         
         # U_net model
-        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_res_blocks, c_dim, dropoutRate).to(device)
+        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_blocks, blk_types, c_dim, dropoutRate).to(device)
         
         # DDIM Variance scheduler for values of beta and alpha
         self.scheduler = DDIM_Scheduler(beta_sched, T, self.step_size, self.device)
@@ -510,7 +522,11 @@ class diff_model(nn.Module):
 
     
     # Save the model
-    def saveModel(self, saveDir, epoch=None, step=None):
+    # saveDir - Directory to save the model state to
+    # optimizer - Optimizer object to save the state of
+    # epoch (optional) - Current epoch of the model (helps when loading state)
+    # step (optional) - Current step of the model (helps when loading state)
+    def saveModel(self, saveDir, optimizer, epoch=None, step=None):
         # Craft the save string
         saveFile = "model"
         saveDefFile = "model_params"
@@ -545,7 +561,7 @@ class diff_model(nn.Module):
             D = self.defaults
 
             # Reinitialize the model with the new defaults
-            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_res_blocks"], D["T"], D["beta_sched"], D["t_dim"], self.device, D["c_dim"], D["num_classes"], 0.0, step_size=self.step_size, DDIM_scale=self.DDIM_scale)
+            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_blocks"], D["blk_types"], D["T"], D["beta_sched"], D["t_dim"], self.device, D["c_dim"], D["num_classes"], 0.0, step_size=self.step_size, DDIM_scale=self.DDIM_scale, start_epoch=D["epoch"], start_step=D["step"])
 
             # Load the model state
             self.load_state_dict(torch.load(loadDir + os.sep + loadFile, map_location=self.device))
