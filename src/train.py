@@ -19,7 +19,7 @@ def train():
     T = 1000
     Lambda = 0.001
     beta_sched = "cosine"
-    batchSize = 12
+    batchSize = 128
     numSteps = 1            # Number of steps to breakup the batchSize into. Instead
                             # of taking 1 massive step where the whole batch is loaded into
                             # memory, the batchSize is broken up into sizes of
@@ -42,10 +42,11 @@ def train():
     numSaveSteps = 10
     
     ## Loading params
-    loadModel = False
+    loadModel = True
     loadDir = "models/"
-    loadFile = "model_1e_7s.pkl"
-    loadDefFile = "model_params_1e_7s.json"
+    loadFile = "model_12e_100s.pkl"
+    optimFile = "optim_12e_100s.pkl"
+    loadDefFile = "model_params_12e_100s.json"
     
     ## Data parameters
     reshapeType = None # Should the data be reshaped to the nearest power of 2 "down", "up", or not at all?
@@ -75,10 +76,10 @@ def train():
     
     # Optional model loading
     if loadModel == True:
-        model.loadModel(loadDir, loadFile, loadDefFile,)
+        model.loadModel(loadDir, loadFile, loadDefFile)
     
     # Train the model
-    trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond, load_into_mem=load_into_mem)
+    trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond, load_into_mem=load_into_mem, optimFile=None if loadModel==False else loadDir+os.sep+optimFile)
     trainer.train(data_path, num_data, cls_min, reshapeType)
     # trainer.train(img_data, labels if c_dim != None else None)
     

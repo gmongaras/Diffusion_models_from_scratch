@@ -523,20 +523,24 @@ class diff_model(nn.Module):
     
     # Save the model
     # saveDir - Directory to save the model state to
-    # optimizer - Optimizer object to save the state of
+    # optimizer (optional) - Optimizer object to save the state of
     # epoch (optional) - Current epoch of the model (helps when loading state)
     # step (optional) - Current step of the model (helps when loading state)
     def saveModel(self, saveDir, optimizer, epoch=None, step=None):
         # Craft the save string
         saveFile = "model"
+        optimFile = "optim"
         saveDefFile = "model_params"
         if epoch:
             saveFile += f"_{epoch}e"
+            optimFile += f"_{epoch}e"
             saveDefFile += f"_{epoch}e"
         if step:
             saveFile += f"_{step}s"
+            optimFile += f"_{step}s"
             saveDefFile += f"_{step}s"
         saveFile += ".pkl"
+        optimFile += ".pkl"
         saveDefFile += ".json"
 
         # Change epoch and step state if given
@@ -550,8 +554,10 @@ class diff_model(nn.Module):
         if not os.path.isdir(saveDir):
             os.makedirs(saveDir)
         
-        # Save the model
+        # Save the model and the optimizer
         torch.save(self.state_dict(), saveDir + os.sep + saveFile)
+        if optimizer:
+            torch.save(optimizer.state_dict(), saveDir + os.sep + optimFile)
 
         # Save the defaults
         with open(saveDir + os.sep + saveDefFile, "w") as f:
@@ -559,6 +565,9 @@ class diff_model(nn.Module):
     
     
     # Load the model
+    # loadDir - Directory to load the model from
+    # loadFile - Pytorch model file to load in
+    # loadDefFile (Optional) - Defaults file to load in
     def loadModel(self, loadDir, loadFile, loadDefFile=None):
         if loadDefFile:
             # Load in the defaults
