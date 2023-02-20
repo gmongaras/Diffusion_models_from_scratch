@@ -329,7 +329,7 @@ class model_trainer():
         self.steps_list = np.array([])
 
         # Number of steps taken
-        num_steps = 0
+        num_steps = self.model.module.defaults["step"]
 
         # Cumulative loss over the batch over each set of steps
         losses_comb_s = torch.tensor(0.0, requires_grad=False)
@@ -337,7 +337,7 @@ class model_trainer():
         losses_var_s = torch.tensor(0.0, requires_grad=False)
         
         # Iterate over the desiered number of epochs
-        for epoch in range(1, self.epochs+1):
+        for epoch in range(self.model.module.defaults["epoch"], self.epochs+1):
             # Set the epoch number for the dataloader to seed the
             # randomization of the sampler
             if self.dev != "cpu":

@@ -12,15 +12,15 @@ def train():
     embCh = 128
     chMult = 1
     num_blocks = 3
-    blk_types = ["res", "res", "clsAtn", "chnAtn"]
+    blk_types = ["res", "conv", "clsAtn", "chnAtn"]
                         # blk_types - How should the residual block be structured 
                         #             (list of "res", "conv", "clsAtn", and/or "chnAtn". 
                         #              Ex: ["res", "res", "conv", "clsAtn", "chnAtn"] 
     T = 1000
     Lambda = 0.001
     beta_sched = "cosine"
-    batchSize = 120
-    numSteps = 4            # Number of steps to breakup the batchSize into. Instead
+    batchSize = 12
+    numSteps = 1            # Number of steps to breakup the batchSize into. Instead
                             # of taking 1 massive step where the whole batch is loaded into
                             # memory, the batchSize is broken up into sizes of
                             # batchSize//numSteps so that it can fit into memory. Mathematically,
@@ -39,13 +39,13 @@ def train():
     
     ## Saving params
     saveDir = "models/"
-    numSaveSteps = 10000
+    numSaveSteps = 10
     
     ## Loading params
     loadModel = False
     loadDir = "models/"
-    loadFile = "model_10000.pkl"
-    loadDefFile = "model_params_10000.json"
+    loadFile = "model_1e_7s.pkl"
+    loadDefFile = "model_params_1e_7s.json"
     
     ## Data parameters
     reshapeType = None # Should the data be reshaped to the nearest power of 2 "down", "up", or not at all?

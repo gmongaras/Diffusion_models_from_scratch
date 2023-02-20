@@ -538,6 +538,12 @@ class diff_model(nn.Module):
             saveDefFile += f"_{step}s"
         saveFile += ".pkl"
         saveDefFile += ".json"
+
+        # Change epoch and step state if given
+        if epoch:
+            self.defaults["epoch"] = epoch
+        if step:
+            self.defaults["step"] = step
         
         # Check if the directory exists. If it doesn't
         # create it
