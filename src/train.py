@@ -12,9 +12,9 @@ def train():
     embCh = 128
     chMult = 1
     num_blocks = 3
-    blk_types = ["res", "conv", "clsAtn", "chnAtn"]
+    blk_types = ["res", "conv", "clsAtn", "atn"]
                         # blk_types - How should the residual block be structured 
-                        #             (list of "res", "conv", "clsAtn", and/or "chnAtn". 
+                        #             (list of "res", "conv", "clsAtn", "atn', and/or "chnAtn". 
                         #              Ex: ["res", "res", "conv", "clsAtn", "chnAtn"] 
     T = 1000
     Lambda = 0.001
@@ -32,6 +32,7 @@ def train():
     t_dim = 512
     c_dim = 512             # Embedding dimension for class info (use None to not use class info)
     p_uncond = 0.2          # Probability of training on a null class (only used if c_dim is not None)
+    atn_resolution = 16
     dropoutRate = 0.1
     use_importance = False # Should importance sampling be used to sample values of t?
     data_path = "data/Imagenet64"
@@ -72,14 +73,14 @@ def train():
     
     
     ### Model Creation
-    model = diff_model(inCh, embCh, chMult, num_blocks, blk_types, T, beta_sched, t_dim, device, c_dim, num_classes, dropoutRate)
+    model = diff_model(inCh, embCh, chMult, num_blocks, blk_types, T, beta_sched, t_dim, device, c_dim, num_classes, atn_resolution, dropoutRate)
     
     # Optional model loading
     if loadModel == True:
         model.loadModel(loadDir, loadFile, loadDefFile)
     
     # Train the model
-    trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond, load_into_mem=load_into_mem, optimFile=None if loadModel==False else loadDir+os.sep+optimFile)
+    trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond, load_into_mem=load_into_mem, optimFile=None if loadModel==False or optimFile==None else loadDir+os.sep+optimFile)
     trainer.train(data_path, num_data, cls_min, reshapeType)
     # trainer.train(img_data, labels if c_dim != None else None)
     

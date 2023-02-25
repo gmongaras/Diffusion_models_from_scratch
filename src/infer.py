@@ -8,10 +8,7 @@ def infer():
     #### Parameters
 
     ## Loading params
-    # loadDir = "models_res_conv"
-    # loadFile = "model_399e_500000s.pkl"
-    # loadDefFile = "model_params_399e_500000s.json"
-    loadDir = "models_res_res"
+    loadDir = "models/models_res"
     loadFile = "model_399e_500000s.pkl"
     loadDefFile = "model_params_399e_500000s.json"
 
@@ -46,7 +43,7 @@ def infer():
     ### Model Creation
 
     # Create a dummy model
-    model = diff_model(3, 3, 1, 1, 100000, "cosine", 100, device, 100, 1000, 0.0, step_size, DDIM_scale)
+    model = diff_model(3, 3, 1, 1, ["res", "res"], 100000, "cosine", 100, device, 100, 1000, 16, 0.0, step_size, DDIM_scale)
     
     # Load in the model weights
     model.loadModel(loadDir, loadFile, loadDefFile)

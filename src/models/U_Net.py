@@ -5,21 +5,11 @@ sys.path.append('../blocks')
 import torch
 from torch import nn
 try:
-    from blocks.BigGAN_ResDown import BigGAN_ResDown
-    from blocks.BigGAN_ResUp import BigGAN_ResUp
-    from blocks.BigGAN_Res import BigGAN_Res
-    from blocks.Non_local_MH import Non_local_MH
     from blocks.unetBlock import unetBlock
-    from blocks.convNext import convNext
     from blocks.Efficient_Channel_Attention import Efficient_Channel_Attention
     from blocks.Multihead_Attn import Multihead_Attn
 except ModuleNotFoundError:
-    from ..blocks.BigGAN_ResDown import BigGAN_ResDown
-    from ..blocks.BigGAN_ResUp import BigGAN_ResUp
-    from ..blocks.BigGAN_Res import BigGAN_Res
-    from ..blocks.Non_local_MH import Non_local_MH
     from ..blocks.unetBlock import unetBlock
-    from ..blocks.convNext import convNext
     from ..blocks.Efficient_Channel_Attention import Efficient_Channel_Attention
     from ..blocks.Multihead_Attn import Multihead_Attn
 
@@ -43,7 +33,8 @@ class U_Net(nn.Module):
     #              Ex: ["res", "res", "conv", "clsAtn", "chnAtn"] 
     # c_dim - (optional) Vector size for the supplied c vectors
     # dropoutRate - Rate to apply dropout in the model
-    def __init__(self, inCh, outCh, embCh, chMult, t_dim, num_blocks, blk_types, c_dim=None, dropoutRate=0.0):
+    # atn_resolution - Resolution of the attention blocks
+    def __init__(self, inCh, outCh, embCh, chMult, t_dim, num_blocks, blk_types, c_dim=None, dropoutRate=0.0, atn_resolution=16):
         super(U_Net, self).__init__()
 
         self.c_dim = c_dim
@@ -56,7 +47,7 @@ class U_Net(nn.Module):
         blocks = []
         curCh = embCh
         for i in range(1, num_blocks+1):
-            blocks.append(unetBlock(curCh, embCh*(2**(chMult*i)), blk_types, t_dim, c_dim, dropoutRate=dropoutRate))
+            blocks.append(unetBlock(curCh, embCh*(2**(chMult*i)), blk_types, t_dim, c_dim, dropoutRate=dropoutRate, atn_resolution=atn_resolution))
             if i != num_blocks+1:
                 blocks.append(nn.Conv2d(embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), kernel_size=3, stride=2, padding=1))
             curCh = embCh*(2**(chMult*i))
@@ -71,10 +62,10 @@ class U_Net(nn.Module):
         intermediateCh = curCh
         self.intermediate = nn.Sequential(
             # convNext(intermediateCh, intermediateCh, t_dim, dropoutRate=dropoutRate),
-            unetBlock(intermediateCh, intermediateCh, blk_types, t_dim, c_dim, dropoutRate=dropoutRate),
+            unetBlock(intermediateCh, intermediateCh, blk_types, t_dim, c_dim, dropoutRate=dropoutRate, atn_resolution=atn_resolution),
             Efficient_Channel_Attention(intermediateCh),
             # convNext(intermediateCh, intermediateCh, t_dim, dropoutRate=dropoutRate)
-            unetBlock(intermediateCh, intermediateCh, blk_types, t_dim, c_dim, dropoutRate=dropoutRate),
+            unetBlock(intermediateCh, intermediateCh, blk_types, t_dim, c_dim, dropoutRate=dropoutRate, atn_resolution=atn_resolution),
         )
         
         
@@ -83,12 +74,11 @@ class U_Net(nn.Module):
         blocks = []
         for i in range(num_blocks, -1, -1):
             if i == 0:
-                blocks.append(unetBlock(embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), blk_types, t_dim, c_dim, dropoutRate=dropoutRate))
-                blocks.append(unetBlock(embCh*(2**(chMult*i)), outCh, blk_types, t_dim, c_dim, dropoutRate=dropoutRate))
+                blocks.append(unetBlock(embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), blk_types, t_dim, c_dim, dropoutRate=dropoutRate, atn_resolution=atn_resolution))
+                blocks.append(unetBlock(embCh*(2**(chMult*i)), outCh, blk_types, t_dim, c_dim, dropoutRate=dropoutRate, atn_resolution=atn_resolution))
             else:
                 blocks.append(nn.ConvTranspose2d(embCh*(2**(chMult*(i))), embCh*(2**(chMult*(i))), kernel_size=4, stride=2, padding=1))
-                # blocks.append(BigGAN_ResUp(embCh*(2**(chMult*(i))), embCh*(2**(chMult*(i))), t_dim, dropoutRate))
-                blocks.append(unetBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*(i-1))), blk_types, t_dim, c_dim, dropoutRate=dropoutRate))
+                blocks.append(unetBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*(i-1))), blk_types, t_dim, c_dim, dropoutRate=dropoutRate, atn_resolution=atn_resolution))
         self.upBlocks = nn.Sequential(
             *blocks
         )

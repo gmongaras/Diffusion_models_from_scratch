@@ -41,6 +41,7 @@ class diff_model(nn.Module):
     # device - Device to put the model on (gpu or cpu)
     # c_dim - Embedding dimension for the class embeddings (None to not use class embeddings)
     # num_classes - Number of possible classes the network will work with
+    # atn_resolution - Resolution for the attention blocks ("atn") if used
     # dropoutRate - Rate to apply dropout to the U-net model
     # step_size - Step size to take when generating images. This is 1 for
     #        normal generation, but a greater integer for faster generation.
@@ -54,7 +55,8 @@ class diff_model(nn.Module):
     #               change the name of the saved output file
     def __init__(self, inCh, embCh, chMult, num_blocks,
                  blk_types, T, beta_sched, t_dim, device, 
-                 c_dim=None, num_classes=None, dropoutRate=0.0, 
+                 c_dim=None, num_classes=None, 
+                 atn_resolution=16, dropoutRate=0.0, 
                  step_size=1, DDIM_scale=0.5,
                  start_epoch=1, start_step=0):
         super(diff_model, self).__init__()
@@ -83,6 +85,7 @@ class diff_model(nn.Module):
             "t_dim": t_dim,
             "c_dim": c_dim,
             "num_classes": num_classes,
+            "atn_resolution": atn_resolution,
             "epoch": start_epoch,
             "step": start_step
         }
@@ -114,7 +117,7 @@ class diff_model(nn.Module):
         self.T = torch.tensor(T, device=device)
         
         # U_net model
-        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_blocks, blk_types, c_dim, dropoutRate).to(device)
+        self.unet = U_Net(inCh, inCh*2, embCh, chMult, t_dim, num_blocks, blk_types, c_dim, dropoutRate, atn_resolution).to(device)
         
         # DDIM Variance scheduler for values of beta and alpha
         self.scheduler = DDIM_Scheduler(beta_sched, T, self.step_size, self.device)
@@ -575,8 +578,12 @@ class diff_model(nn.Module):
                 self.defaults = json.load(f)
             D = self.defaults
 
+            # Old models don't have atn_resolution
+            if "atn_resolution" not in D.keys():
+                D["atn_resolution"] = 16
+
             # Reinitialize the model with the new defaults
-            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_blocks"], D["blk_types"], D["T"], D["beta_sched"], D["t_dim"], self.device, D["c_dim"], D["num_classes"], 0.0, step_size=self.step_size, DDIM_scale=self.DDIM_scale, start_epoch=D["epoch"], start_step=D["step"])
+            self.__init__(D["inCh"], D["embCh"], D["chMult"], D["num_blocks"], D["blk_types"], D["T"], D["beta_sched"], D["t_dim"], self.device, D["c_dim"], D["num_classes"], D["atn_resolution"], 0.0, step_size=self.step_size, DDIM_scale=self.DDIM_scale, start_epoch=D["epoch"], start_step=D["step"])
 
             # Load the model state
             self.load_state_dict(torch.load(loadDir + os.sep + loadFile, map_location=self.device))
