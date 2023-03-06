@@ -133,7 +133,7 @@ class Multihead_Attn(nn.Module):
         if self.spatial == True:
             Out = torch.einsum("nhcd, nhce -> nhde", Q, K)
         else:
-            Out = torch.einsum("nhcd, nhCd -> nhcC", Q, K)
+            Out = torch.einsum("nhcd, nhed -> nhce", Q, K)
 
         # Normalize
         Out = self.softmax(Out*self.norm_factor)

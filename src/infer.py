@@ -21,7 +21,7 @@ def infer():
                             # use 0 for pure DDIM and 1 for pure DDPM
                             # Note: a low scalar performs better with a high step size.
                             # and a high scalar performs better with a low step size.
-    device = "cpu"
+    device = "gpu"
     w = 4                 # (only used if the model uses class info) 
                             # Classifier guidance scale factor
                             # Use 0 for no classifier guidance.
