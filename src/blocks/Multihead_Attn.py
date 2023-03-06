@@ -131,7 +131,7 @@ class Multihead_Attn(nn.Module):
         # if channel:
         #   (N, H, inCh, LW) * (N, H, inCh, LW) -> (N, H, inCh, inCh)
         if self.spatial == True:
-            Out = torch.einsum("nhcd, nhcD -> nhdD", Q, K)
+            Out = torch.einsum("nhcd, nhce -> nhde", Q, K)
         else:
             Out = torch.einsum("nhcd, nhCd -> nhcC", Q, K)
 
@@ -144,9 +144,9 @@ class Multihead_Attn(nn.Module):
         # if channel:
         #   (N, H, inCh, LW) * (N, H, inCh, LW) -> (N, H, inCh, LW)
         if self.spatial == True:
-            Out = torch.einsum("nhdD, nhcD -> nhcd", Out, V)
+            Out = torch.einsum("nhde, nhce -> nhcd", Out, V)
         else:
-            Out = torch.einsum("nhcC, nhDd -> nhcd", Out, V)
+            Out = torch.einsum("nhce, nhfd -> nhcd", Out, V)
         
         # Unflatten the resulting tensor
         # (N, H, inCh/H, LW) -> (N, H, inCh/H, L, W)

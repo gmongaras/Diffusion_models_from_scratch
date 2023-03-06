@@ -60,7 +60,7 @@ class clsAttn(nn.Module):
 
         # Apply the attention matrix to the input embeddings
         # (N, inCh, L, W) * (N, inCh, inCh) = (N, inCh, L, W)
-        X = torch.einsum("nclw, ncC -> nclw", X, KQ)
+        X = torch.einsum("nclw, ncd -> nclw", X, KQ)
 
         # Output embeddings
         X = self.out_emb(X)
