@@ -71,7 +71,7 @@ def compute_model_stats(
         device = torch.device(f"cpu")
 
     # Load in the model
-    model = diff_model(3, 3, 1, 1, ["res", "res"], 100000, "cosine", 100, device, 100, 1000, 0.0, step_size, DDIM_scale)
+    model = diff_model(3, 3, 1, 1, ["res", "res"], 100000, "cosine", 100, device, 100, 1000, 16, 0.0, step_size, DDIM_scale)
     model.loadModel(model_dirname, model_filename, model_params_filename)
     model.eval()
 

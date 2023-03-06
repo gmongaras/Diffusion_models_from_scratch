@@ -423,7 +423,7 @@ class diff_model(nn.Module):
 
 
 
-
+    
         # Variance for a DDPM to a DDIM
         # Get the beta and a values for the batch of t values
         sqrt_a_bar_t = self.scheduler.sample_sqrt_a_bar_t(t_DDIM)

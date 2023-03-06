@@ -12,14 +12,14 @@ def train():
     embCh = 128
     chMult = 1
     num_blocks = 3
-    blk_types = ["res", "conv", "clsAtn", "atn"]
+    blk_types = ["res", "conv", "clsAtn", "atn", "chnAtn"]
                         # blk_types - How should the residual block be structured 
                         #             (list of "res", "conv", "clsAtn", "atn', and/or "chnAtn". 
                         #              Ex: ["res", "res", "conv", "clsAtn", "chnAtn"] 
     T = 1000
     Lambda = 0.001
     beta_sched = "cosine"
-    batchSize = 128
+    batchSize = 12
     numSteps = 1            # Number of steps to breakup the batchSize into. Instead
                             # of taking 1 massive step where the whole batch is loaded into
                             # memory, the batchSize is broken up into sizes of
