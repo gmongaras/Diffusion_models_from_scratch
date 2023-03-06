@@ -16,6 +16,8 @@ eval/saved_stats.7z
 !data/README.md
 !data/loadImagenet64.py
 !data/make_massive_tensor.py
+!results/*.gif
+!results/*.png
 
 
 # Byte-compiled / optimized / DLL files
