@@ -19,9 +19,17 @@
             // "module": "tests.diff_model_noise_test",
             "console": "integratedTerminal",
             "justMyCode": false,
+            // "args": [
+            //     "--nproc_per_node=1",
+            //     "src/train.py"
+            // ]
+
             "args": [
-                "--nproc_per_node=1",
-                "src/train.py"
+                "--loadDir", "models/models_res_res_atn",
+                "--loadFile", "model_358e_450000s.pkl",
+                "--loadDefFile", "model_params_358e_450000s.json",
+                "--device", "cpu", 
+                "--step_size", "500"
             ]
         }
     ]

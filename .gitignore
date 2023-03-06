@@ -16,6 +16,7 @@ eval/saved_stats.7z
 !data/README.md
 !data/loadImagenet64.py
 !data/make_massive_tensor.py
+!data/class_information.txt
 !results/*.gif
 !results/*.png
 
