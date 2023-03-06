@@ -19,10 +19,10 @@
             // "module": "tests.diff_model_noise_test",
             "console": "integratedTerminal",
             "justMyCode": false,
-            // "args": [
-            //     "src/train.py",
-            //     "()"
-            // ]
+            "args": [
+                "--nproc_per_node=1",
+                "src/train.py"
+            ]
         }
     ]
 }

@@ -77,7 +77,8 @@ class model_trainer():
     #                  False to use uniform sampling.
     # p_uncond - Probability of training on a null class (only used if class info is used)
     # load_into_mem - True to load all data into memory first, False to load from disk as needed
-    def __init__(self, diff_model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond=None, max_world_size=None, load_into_mem=False):
+    # optimFile - Optional name of optimizer to load in
+    def __init__(self, diff_model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond=None, max_world_size=None, load_into_mem=False, optimFile=None):
         # Saved info
         self.T = diff_model.T
         self.batchSize = batchSize//numSteps
@@ -122,6 +123,10 @@ class model_trainer():
         
         # Optimizer
         self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr, eps=1e-4)
+
+        # Load in optimizer paramters if they exist
+        if optimFile:
+            self.optim.load_state_dict(torch.load(optimFile, map_location=self.device))
         
         # Loss function
         self.MSE = nn.MSELoss(reduction="none").to(self.device)
@@ -329,7 +334,7 @@ class model_trainer():
         self.steps_list = np.array([])
 
         # Number of steps taken
-        num_steps = 0
+        num_steps = self.model.module.defaults["step"]
 
         # Cumulative loss over the batch over each set of steps
         losses_comb_s = torch.tensor(0.0, requires_grad=False)
@@ -337,7 +342,7 @@ class model_trainer():
         losses_var_s = torch.tensor(0.0, requires_grad=False)
         
         # Iterate over the desiered number of epochs
-        for epoch in range(1, self.epochs+1):
+        for epoch in range(self.model.module.defaults["epoch"], self.epochs+1):
             # Set the epoch number for the dataloader to seed the
             # randomization of the sampler
             if self.dev != "cpu":
@@ -432,9 +437,9 @@ class model_trainer():
                 # Save the model and graph every number of desired steps
                 if num_steps%self.numSaveSteps == 0 and is_main_process():
                     if self.dev == "cpu":
-                        self.model.saveModel(self.saveDir, epoch, num_steps)
+                        self.model.saveModel(self.saveDir, self.optim, epoch, num_steps)
                     else:
-                        self.model.module.saveModel(self.saveDir, epoch, num_steps)
+                        self.model.module.saveModel(self.saveDir, self.optim, epoch, num_steps)
                     self.graph_losses()
 
                     print("Saving model")

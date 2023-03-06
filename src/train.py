@@ -9,14 +9,18 @@ def train():
     
     ## Model params
     inCh = 3
-    embCh = 192
+    embCh = 128
     chMult = 1
-    num_res_blocks = 3
+    num_blocks = 3
+    blk_types = ["res", "conv", "clsAtn", "atn", "chnAtn"]
+                        # blk_types - How should the residual block be structured 
+                        #             (list of "res", "conv", "clsAtn", "atn', and/or "chnAtn". 
+                        #              Ex: ["res", "res", "conv", "clsAtn", "chnAtn"] 
     T = 1000
     Lambda = 0.001
     beta_sched = "cosine"
-    batchSize = 120
-    numSteps = 4            # Number of steps to breakup the batchSize into. Instead
+    batchSize = 12
+    numSteps = 1            # Number of steps to breakup the batchSize into. Instead
                             # of taking 1 massive step where the whole batch is loaded into
                             # memory, the batchSize is broken up into sizes of
                             # batchSize//numSteps so that it can fit into memory. Mathematically,
@@ -28,6 +32,7 @@ def train():
     t_dim = 512
     c_dim = 512             # Embedding dimension for class info (use None to not use class info)
     p_uncond = 0.2          # Probability of training on a null class (only used if c_dim is not None)
+    atn_resolution = 16
     dropoutRate = 0.1
     use_importance = False # Should importance sampling be used to sample values of t?
     data_path = "data/Imagenet64"
@@ -40,8 +45,9 @@ def train():
     ## Loading params
     loadModel = False
     loadDir = "models/"
-    loadFile = "model_10000.pkl"
-    loadDefFile = "model_params_10000.json"
+    loadFile = "model_12e_100s.pkl"
+    optimFile = "optim_12e_100s.pkl"
+    loadDefFile = "model_params_12e_100s.json"
     
     ## Data parameters
     reshapeType = None # Should the data be reshaped to the nearest power of 2 "down", "up", or not at all?
@@ -67,14 +73,14 @@ def train():
     
     
     ### Model Creation
-    model = diff_model(inCh, embCh, chMult, num_res_blocks, T, beta_sched, t_dim, device, c_dim, num_classes, dropoutRate)
+    model = diff_model(inCh, embCh, chMult, num_blocks, blk_types, T, beta_sched, t_dim, device, c_dim, num_classes, atn_resolution, dropoutRate)
     
     # Optional model loading
     if loadModel == True:
-        model.loadModel(loadDir, loadFile, loadDefFile,)
+        model.loadModel(loadDir, loadFile, loadDefFile)
     
     # Train the model
-    trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond, load_into_mem=load_into_mem)
+    trainer = model_trainer(model, batchSize, numSteps, epochs, lr, device, Lambda, saveDir, numSaveSteps, use_importance, p_uncond, load_into_mem=load_into_mem, optimFile=None if loadModel==False or optimFile==None else loadDir+os.sep+optimFile)
     trainer.train(data_path, num_data, cls_min, reshapeType)
     # trainer.train(img_data, labels if c_dim != None else None)
     

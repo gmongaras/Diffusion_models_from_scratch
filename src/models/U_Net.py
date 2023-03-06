@@ -5,21 +5,11 @@ sys.path.append('../blocks')
 import torch
 from torch import nn
 try:
-    from blocks.BigGAN_ResDown import BigGAN_ResDown
-    from blocks.BigGAN_ResUp import BigGAN_ResUp
-    from blocks.BigGAN_Res import BigGAN_Res
-    from blocks.Non_local_MH import Non_local_MH
-    from blocks.resBlock import resBlock
-    from blocks.convNext import convNext
+    from blocks.unetBlock import unetBlock
     from blocks.Efficient_Channel_Attention import Efficient_Channel_Attention
     from blocks.Multihead_Attn import Multihead_Attn
 except ModuleNotFoundError:
-    from ..blocks.BigGAN_ResDown import BigGAN_ResDown
-    from ..blocks.BigGAN_ResUp import BigGAN_ResUp
-    from ..blocks.BigGAN_Res import BigGAN_Res
-    from ..blocks.Non_local_MH import Non_local_MH
-    from ..blocks.resBlock import resBlock
-    from ..blocks.convNext import convNext
+    from ..blocks.unetBlock import unetBlock
     from ..blocks.Efficient_Channel_Attention import Efficient_Channel_Attention
     from ..blocks.Multihead_Attn import Multihead_Attn
 
@@ -37,10 +27,14 @@ class U_Net(nn.Module):
     # chMult - Multiplier to scale the number of channels by
     #          for each up/down sampling block
     # t_dim - Vector size for the supplied t vector
-    # num_res_blocks - Number of residual blocks on the up/down path
+    # num_blocks - Number of blocks on the up/down path
+    # blk_types - How should the residual block be structured 
+    #             (list of "res", "conv", "clsAtn", and/or "chnAtn". 
+    #              Ex: ["res", "res", "conv", "clsAtn", "chnAtn"] 
     # c_dim - (optional) Vector size for the supplied c vectors
     # dropoutRate - Rate to apply dropout in the model
-    def __init__(self, inCh, outCh, embCh, chMult, t_dim, num_res_blocks, c_dim=None, dropoutRate=0.0):
+    # atn_resolution - Resolution of the attention blocks
+    def __init__(self, inCh, outCh, embCh, chMult, t_dim, num_blocks, blk_types, c_dim=None, dropoutRate=0.0, atn_resolution=16):
         super(U_Net, self).__init__()
 
         self.c_dim = c_dim
@@ -49,12 +43,12 @@ class U_Net(nn.Module):
         self.inConv = nn.Conv2d(inCh, embCh, 7, padding=3)
         
         # Downsampling
-        # (N, inCh, L, W) -> (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks))
+        # (N, inCh, L, W) -> (N, embCh^(chMult*num_blocks), L/(2^num_blocks), W/(2^num_blocks))
         blocks = []
         curCh = embCh
-        for i in range(1, num_res_blocks+1):
-            blocks.append(resBlock(curCh, embCh*(2**(chMult*i)), t_dim, c_dim, head_res=16, dropoutRate=dropoutRate))
-            if i != num_res_blocks+1:
+        for i in range(1, num_blocks+1):
+            blocks.append(unetBlock(curCh, embCh*(2**(chMult*i)), blk_types, t_dim, c_dim, dropoutRate=dropoutRate, atn_resolution=atn_resolution))
+            if i != num_blocks+1:
                 blocks.append(nn.Conv2d(embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), kernel_size=3, stride=2, padding=1))
             curCh = embCh*(2**(chMult*i))
         self.downBlocks = nn.Sequential(
@@ -63,29 +57,28 @@ class U_Net(nn.Module):
         
         
         # Intermediate blocks
-        # (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks))
-        # -> (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks))
+        # (N, embCh^(chMult*num_blocks), L/(2^num_blocks), W/(2^num_blocks))
+        # -> (N, embCh^(chMult*num_blocks), L/(2^num_blocks), W/(2^num_blocks))
         intermediateCh = curCh
         self.intermediate = nn.Sequential(
             # convNext(intermediateCh, intermediateCh, t_dim, dropoutRate=dropoutRate),
-            resBlock(intermediateCh, intermediateCh, t_dim, c_dim, dropoutRate=dropoutRate),
+            unetBlock(intermediateCh, intermediateCh, blk_types, t_dim, c_dim, dropoutRate=dropoutRate, atn_resolution=atn_resolution),
             Efficient_Channel_Attention(intermediateCh),
             # convNext(intermediateCh, intermediateCh, t_dim, dropoutRate=dropoutRate)
-            resBlock(intermediateCh, intermediateCh, t_dim, c_dim, dropoutRate=dropoutRate),
+            unetBlock(intermediateCh, intermediateCh, blk_types, t_dim, c_dim, dropoutRate=dropoutRate, atn_resolution=atn_resolution),
         )
         
         
         # Upsample
-        # (N, embCh^(chMult*num_res_blocks), L/(2^num_res_blocks), W/(2^num_res_blocks)) -> (N, inCh, L, W)
+        # (N, embCh^(chMult*num_blocks), L/(2^num_blocks), W/(2^num_blocks)) -> (N, inCh, L, W)
         blocks = []
-        for i in range(num_res_blocks, -1, -1):
+        for i in range(num_blocks, -1, -1):
             if i == 0:
-                blocks.append(resBlock(embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), t_dim, c_dim, num_heads=1, dropoutRate=dropoutRate))
-                blocks.append(resBlock(embCh*(2**(chMult*i)), outCh, t_dim, c_dim, num_heads=1, dropoutRate=dropoutRate))
+                blocks.append(unetBlock(embCh*(2**(chMult*i)), embCh*(2**(chMult*i)), blk_types, t_dim, c_dim, dropoutRate=dropoutRate, atn_resolution=atn_resolution))
+                blocks.append(unetBlock(embCh*(2**(chMult*i)), outCh, blk_types, t_dim, c_dim, dropoutRate=dropoutRate, atn_resolution=atn_resolution))
             else:
                 blocks.append(nn.ConvTranspose2d(embCh*(2**(chMult*(i))), embCh*(2**(chMult*(i))), kernel_size=4, stride=2, padding=1))
-                # blocks.append(BigGAN_ResUp(embCh*(2**(chMult*(i))), embCh*(2**(chMult*(i))), t_dim, dropoutRate))
-                blocks.append(resBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*(i-1))), t_dim, c_dim, head_res=16, dropoutRate=dropoutRate))
+                blocks.append(unetBlock(2*embCh*(2**(chMult*i)), embCh*(2**(chMult*(i-1))), blk_types, t_dim, c_dim, dropoutRate=dropoutRate, atn_resolution=atn_resolution))
         self.upBlocks = nn.Sequential(
             *blocks
         )

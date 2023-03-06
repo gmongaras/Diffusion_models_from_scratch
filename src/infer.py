@@ -8,12 +8,12 @@ def infer():
     #### Parameters
 
     ## Loading params
-    # loadDir = "models_res_conv"
-    # loadFile = "model_399e_500000s.pkl"
-    # loadDefFile = "model_params_399e_500000s.json"
-    loadDir = "models_res_res"
-    loadFile = "model_399e_500000s.pkl"
-    loadDefFile = "model_params_399e_500000s.json"
+    # loadDir = "models/models_res_res"
+    # loadFile = "model_438e_550000s.pkl"
+    # loadDefFile = "model_params_438e_550000s.json"
+    loadDir = "models/models_res_res_atn"
+    loadFile = "model_358e_450000s.pkl"
+    loadDefFile = "model_params_358e_450000s.json"
 
     ## Generation paramters
     step_size = 10               # Step size to take when generating images
@@ -27,10 +27,10 @@ def infer():
                             # Use 0 for no classifier guidance.
                             # The higher this value is, the better the
                             # quality, but the lower the diversity
-    class_label = 10       # (only used if the model uses class info) 
+    class_label = 0       # (only used if the model uses class info) 
                             # Class we want the model to generate
                             # Use -1 to generate without a class.
-    corrected = True       # True to put a limit on generation. 
+    corrected = False       # True to put a limit on generation. 
                             # False to not restrain generation
                             # This may make generation more stable if
                             # the model is generating nan or mostly black/white images
@@ -46,7 +46,7 @@ def infer():
     ### Model Creation
 
     # Create a dummy model
-    model = diff_model(3, 3, 1, 1, 100000, "cosine", 100, device, 100, 1000, 0.0, step_size, DDIM_scale)
+    model = diff_model(3, 3, 1, 1, ["res", "res"], 100000, "cosine", 100, device, 100, 1000, 16, 0.0, step_size, DDIM_scale)
     
     # Load in the model weights
     model.loadModel(loadDir, loadFile, loadDefFile)
@@ -72,7 +72,7 @@ def infer():
         title = plt.text(imgs[i].shape[0]//2, -5, f"t = {i}", ha='center')
         imgs[i] = [plt.imshow(imgs[i], animated=True), title]
     animate = animation.ArtistAnimation(fig, imgs, interval=1, blit=True, repeat_delay=1000)
-    animate.save('diffusion.gif', writer=animation.PillowWriter(fps=5))
+    animate.save('diffusion.gif', writer=animation.PillowWriter(fps=10))
     # plt.show()
     
     
