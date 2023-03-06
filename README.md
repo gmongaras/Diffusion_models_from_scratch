@@ -256,12 +256,45 @@ params
 
 # Usage
 
+## Training
+
 To run the train script, use the following command from the root directory:
 `torchrun --standalone --nnodes=1 --nproc_per_node=[num_gpus] src/train.py`
 - num_gpus - The number of gpus to split he model onto
 
-To run the infer script, use the following command from the root directory:
-`python -m src.infer`
+## Inference
+
+To run inference be sure too...
+...
+...
+
+After the above is done, you can run the script as follows from the root directory of this repo:
+
+`python -m src.infer --loadDir [Directory location of models] --loadFile [Filename of the .pkl model file] --loadDefFile [Filename of the .json model parameter file] --[other params]`
+
+For example, if I downloaded the model_358e_450000s file for the models_res_res_atn model and I want to use my CPU with a step size of 20, I would use the following on the command line:
+
+`python -m src.infer --loadDir models/models_res_res_atn --loadFile model_358e_450000s.pkl --loadDefFile model_params_358e_450000s.json --device cpu --step_size 20`
+
+The parameters of the inference scripts are as follows:
+
+<b>Required</b>:
+- loadDir - Location of the models to load in.
+- loadFile - Name of the .pkl model file to load in. Ex: model_358e_450000s.pkl
+- loadDefFile - Name of the .json model file to load in. Ex: model_params_358e_450000s.pkl
+
+<b>Generation parameters</b>
+- step_size [10] - Step size when generating. A step size of 10 with a model trained on 1000 steps takes 100 steps to generate. Lower is faster, but produces lower quality images.
+- DDIM_scale [0] - Must be >= 0. When this value is 0, DDIM is used. When this value is 1, DDPM is used. A low scalar performs better with a high step size and a high scalar performs better with a low step size.
+- device ["gpu"] - Device to put the model on. use "gpu" or "cpu".
+- guidance [4] - Classifier guidance scale which must be >= 0. The higher the value, the better the image quality, but the lower the image diversity.
+- class_label [0] - 0-indexed class value. Use -1 for a random class and any other class value >= 0 for the other classes. FOr imagenet, the class value range from 0 to 999 and can be found in data/class_information.txt
+- corrected [False] - True to put a limit on generation, False to not put a litmit on generation. If the model is generating images of a single color, then you may need to set this flag to True. Note: This restriction is usually needed when generating long sequences (low step size) Note: With a higher guidance w, the correction usually messes up generation.
+
+<b>Output parameters</b>
+- out_imgname ["fig.png"] - Name of the file to save the output image to.
+- out_gifname ["diffusion.gif"] - Name of the file to save the output image to.
+- gif_fps [10] - FPS for the output gif.
 
 
 
