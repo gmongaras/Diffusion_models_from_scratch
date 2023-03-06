@@ -1,4 +1,5 @@
-results/*
+results/First_Model/*
+results/Second_Model/*
 models/*
 models_res_conv/*
 models_res_res/*
@@ -7,6 +8,7 @@ data/*
 *.gif
 *.png
 eval/saved_stats/*
+eval/saved_stats.7z
 
 
 !.gitignore
