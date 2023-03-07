@@ -1,3 +1,8 @@
+# Summary
+This repo is composed of DDPM, DDIM, and Classifier-Free guided models trained on ImageNet 64x64. More information can be found below.
+
+To go along with this repo, I also [wrote an article](https://medium.com/@gmongaras/diffusion-models-ddpms-ddims-and-classifier-free-guidance-e07b297b2869) explaining the algorithms behind it.
+
 # Contents
 - Current Additions
   - Basic Diffusion Model (DDPM)
@@ -219,54 +224,7 @@ The directory should look as follows when all data is downloaded: [Directory Str
 
 # Train A Model
 
-Before training a model, make sure you [setup the environment] and [downloaded the data]
-
-To train a model, run the following command from the root directory.
-`torchrun --nproc_per_node={n_gpus} src/train.py`
-
-Replace `n_gpus` with the number of desired GPUs to use.
-
-
-## Training Parameters
-
-params
-
-
-
-# Generate Images With Pretrained Models
-
-
-
-
-
-# Calculating FID for a pretrained model
-
-
-
-
-
-# My Results
-
-
-
-
-
-
-
-
-# Usage
-
-## Training
-
-To run the training script make sure to ...
-
-...
-
-...
-
-...
-
-...
+<b>Before training a model, make sure you [setup the environment](#environment-setup) and [downloaded the data](#downloading-data)</b>
 
 After the above is complete, you can run the training script as follows from the root directory of this repo:
 
@@ -344,7 +302,12 @@ The parameters of the script are as follows:
 
 
 
-## Inference
+
+
+
+# Generate Images With Pretrained Models
+
+<b>Before training a model, make sure you [setup the environment](#environment-setup) and [downloaded pre-trained models]
 
 To run inference be sure too...
 
@@ -389,9 +352,23 @@ The parameters of the inference scripts are as follows:
 
 
 
-# Data
-## ImageNet (64x64)
-https://image-net.org/download-images.php
+
+# Calculating FID for a pretrained model
+
+
+
+
+
+# My Results
+
+
+
+
+
+
+
+
+# Usage
 
 
 
