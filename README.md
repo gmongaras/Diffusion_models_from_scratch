@@ -258,14 +258,104 @@ params
 
 ## Training
 
-To run the train script, use the following command from the root directory:
-`torchrun --standalone --nnodes=1 --nproc_per_node=[num_gpus] src/train.py`
-- num_gpus - The number of gpus to split he model onto
+To run the training script make sure to ...
+
+...
+
+...
+
+...
+
+...
+
+After the above is complete, you can run the training script as follows from the root directory of this repo:
+
+`torchrun --nproc_per_node=[num_gpus] src/train.py --[params]`
+- [num_gpus] is replaced by the number of desired GPUs to parallelize training on
+- [params] is replaced with any of the parameters listed below
+
+For example:
+
+`torchrun --nproc_per_node=8 src/train.py --blk_types res,res,clsAtn,chnAtn --batchSize 32`
+
+The above example runs the code with the following parameters:
+- Run on 8 parallel GPUs.
+- Each u-net block is composed of res->res->clsAtn->chnAtn sequential blocks.
+- batchSize is 32 on each GPU, so a total batch size of 8*32 = 256.
+
+`torchrun --nproc_per_node=1 src/train.py --loadModel True --loadDir models/models_res --loadFile model_479e_600000s.pkl --optimFile optim_479e_600000s.pkl --loadDefFile model_params_479e_600000s.json --gradAccSteps 2`
+
+The above example loads in a pre-trained model for checkpoint:
+- Use 1 GPU
+- Load the model file `model_479e_600000s.pkl`
+- Load the optimizer file `optim_479e_600000s.pkl`
+- Load the model metadata file `model_params_479e_600000s.json`
+- Use 2 gradient accumulation steps
+
+
+
+The parameters of the script are as follows:
+
+<b>Data Parameters</b>
+- inCh [3] - Number of input channels for the input data.
+- data_path [data/Imagenet64] - Path to the ImageNet 64x64 dataset.
+- load_into_mem [True] - True to load all ImageNet data into memory, False to load the data from disk as needed.
+
+<b>Model Parameters</b>
+- embCh [128] - Number of channels in the top layer of the U-net. Note, this is scaled by 2^(chMult*layer) each U-net layer
+- chMult [1] - At each U-net layer, at what scale should the channels be multiplied by? Each layer has embCh*2^(chMult*layer) channels
+- num_layers [3] - Number of U-net layers. A value of 3 has a depth of 3, meaning there are 3 down layers and 3 up layers in the U-net
+- blk_types [res,clsAtn,chnAtn] - How should the residual block be structured? (list of `res`, `conv`, `clsAtn`, `atn`, and/or `chnAtn`. 
+  - res: Normal residual block. 
+  - conv: ConvNext block.
+  - clsAtn: Attention block to include extra class information (Q, K are cls features). 
+  - atn: Attention ViT block for the hidden features.
+  - clsAtn: Efficient-lightweight attention block over the feature channels. 
+  - EX: `res,res,conv,clsAtn,chnAtn`
+- T [1000] - Number of timesteps in the diffusion process
+- beta_sched [cosine] - Noise scheduler to use in the diffusion process. Can be either `linear` or `cosine`
+- t_dim [512] - Dimension of the vector encoding for the time information.
+- c_dim [512] - Dimension of the vector encoding for the class information. NOTE: Use -1 for no class information
+- atn_resolution [16] - Resolution of the attention block (atn). The resolution splits the image into patches of that resolution to act as vectors. Ex: a resolution of 16 creates 16x16 patches and flattens them as feature vectors.
+
+<b>Training Parameters</b>
+- Lambda [0.001] - Weighting term between the variance and mean loss in the model.
+- batchSize [128] - Batch size on a single GPU. If using multiple GPUs, this batch size will be multiplied by the GPU count.
+- gradAccSteps [1] - Number of steps to breakup the batchSize into. Instead of taking 1 massive step where the whole batch is loaded into memory, the batchSize is broken up into sizes of batchSize//numSteps so that it can fit into memory. Mathematically, the update will be the same, as a single batch update, but the update is distributed across smaller updates to fit into memory. A higher value takes more time, but uses less memory.
+- device [gpu] - Device to put the model on. Use \"gpu\" to put it on one or multiple Cuda devices or \"cpu\" to put it on the CPU. CPU should only be used for testing.
+- epochs [1000000] - Number of epochs to train for.
+- lr [0.0003] - Model learning rate.
+- p_uncond [0.2] - Probability of training on a null class for classifier-free guidance. Note that good values are 0.1 or 0.2. (only used if c_dim is not None)
+- use_importance [False] - True to use importance sampling for values of t, False to use uniform sampling.
+
+<b>Saving Parameters</b>
+- saveDir [models/] - Directory to save models checkpoints to. NOTE that three files will be saved: the model .pkl file, the model metadata .json file, and the optimizer .pkl file for training reloading
+- numSaveSteps [10000] -"Number of steps until a new model checkpoint is saved. This is not the number of epochs, rather it's the number of time the model has updates. NOTE that three files will be saved: the model .pkl file, the model metadata .json file, and the optimizer .pkl file for training reloading.
+
+<b>Model loading Parameters</b>
+- loadModel [False] - True to load a pretrained model from a checkpoint. False to use a randomly initialized model. Note that all three model files are needed for a successfull restart: the model .pkl file, the model metadata .json file, and the optimizer .pkl file.
+- loadDir [models/] - Directory of the model files to load in.
+- loadFile [""] - Model .pkl filename to load in. Will looks something like: model_10e_100s.pkl
+- optimFile [""] - Optimizer .pkl filename to load in. Will looks something like: optim_10e_100s.pkl
+- loadDefFile [""] - Model metadata .json filename to load in. Will looks something like: model_params_10e_100s.json
+
+<b>Data loading parameters</b>
+- reshapeType [""] - If the data is unequal in size, use this to reshape images up by a power of 2, down a power of 2, or not at all ("up", "down", "")
+
+
 
 ## Inference
 
 To run inference be sure too...
+
 ...
+
+...
+
+...
+
+...
+
 ...
 
 After the above is done, you can run the script as follows from the root directory of this repo:
@@ -321,6 +411,12 @@ https://image-net.org/download-images.php
 6. U-net (Convolutional Networks for Biomedical Image Segmentation): https://arxiv.org/abs/1505.04597
 
 7. ConvNext (A ConvNet for the 2020s): https://arxiv.org/abs/2201.03545
+
+8. Attention block (Attention Is All You Need): https://arxiv.org/abs/1706.03762
+
+9. Attention/Vit block (An Image is Worth 16x16 Words): https://arxiv.org/abs/2010.11929
+
+10. Channel Attention block (ECA-Net: Efficient Channel Attention for Deep Convolutional Neural Networks): https://arxiv.org/abs/1910.03151
 
 Thanks to the following link for helping me multi-gpu the project!
 https://theaisummer.com/distributed-training-pytorch/
