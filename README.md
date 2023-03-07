@@ -11,6 +11,8 @@ To go along with this repo, I also [wrote an article](https://medium.com/@gmonga
   - Faster Inference with DDIMs
   - Classifier Free Guidance
 - Environment Setup
+- Downloading Pre-Trained Models
+- Downloading Training Data
 - Train A Model
 - Generate Images With Pretrained Models
 - Calculating FID for a pretrained model
@@ -122,7 +124,78 @@ Now the enviroment should be setup properly.
 
 
 
-# Downloading Data
+# Downloading Pre-Trained Models
+
+## Pre-Trained Model Notes
+I have several pre-trained models available to download or varying model architecture types. There are 5 model types based on the u-net block construction.
+- res ➜ conv ➜ clsAtn ➜ chnAtn (Res-Conv)
+- res ➜ clsAtn ➜ chnAtn (Res)
+- res ➜ res ➜ clsAtn ➜ chnAtn (Res-Res)
+- res ➜ res ➜ clsAtn ➜ atn ➜ chnAtn (Res-Res-Atn)
+- res ➜ clsAtn ➜ chnAtn with 192 channels (Res Large)
+
+The above notation comes from the [Train A Model](#train-a-model) section under the blk_types parameter.
+
+
+Each model was trained with the following parameters unless otherwise specified:
+1. Image Resolution: 64x64
+2. Channel multiplier — 1
+3. Number of U-net blocks — 3
+4. Timesteps — 1000
+5. VLB weighting Lambda — 0.001
+6. Beta Scheduler — Cosine
+7. Batch Size — 128 (across 8 GPUs, so 1024)
+8. Gradient Accumulation Steps — 1
+9. Number of steps (Note: This is not epochs, a step is a single gradient update to the model)— 600,000
+10. Learning Rate — 3*10^-4 = 0.0003
+11. Time embedding dimension size— 512
+12. Class embedding dimension size — 512
+13. Probability of null class for classifier-free guidance — 0.2
+14. Attention resolution — 16
+
+Below are some training notes:
+- I used 8 parallel GPUs each with a batch size of 128. SO, the batch size is 8*128 = 1024.
+- I trained each model for a total of 600,000 steps. Note that this isn't number of epochs, but rather model updates. The models look to be able to be trained for longer since the FID values look the be decreasing even at 600,000 steps if you wish to continue training from a pre-trained checkpoint.
+- Training the smaller models (res-conv, res, res-res) took 6-7 days to train and the larger models took about 8 days to train on 8 A100s.
+
+
+## Picking a Model
+To pick a model, I suggest looking at the [results](#my-results). The lower the FID score, the better better the outputs of the model are. The best models according to the results are:
+- `res-res-atn`:
+  - 358 epochs (358e)
+  - 450000 steps (450000s)
+  - The files for this model are:
+    - model file: `model_358e_450000s.pkl`
+    - model file: `model_params_358e_450000s.json`
+    - optim file: `optim_358e_450000s.pkl`
+- `res-res`:
+  - 438 epochs (438e)
+  - 550000 steps (550000s)
+  - The files for this model are:
+    - model file: `model_438e_550000s.pkl`
+    - model metadata: `model_params_438e_550000s.json`
+    - optimizer: `optim_438e_550000s.pkl`
+  
+## Downloading A Model
+Once the model has been picked, you can download a model at the following link:
+
+[Google Drive link](https://drive.google.com/drive/folders/1NueH5GaDYAI_8G9GJ19G06ijDp1scX0O)
+
+<b>For training from a checkpoint</b> you need to download three files for a model:
+- The model .pkl file (ex: model_438e_550000s.pkl)
+- The model metadata .json file (ex: model_params_438e_550000s.json)
+- The optimizer .pkl file (ex: optim_438e_550000s.pkl)
+
+<b>For inference/generation</b> you only need to download two files for the model:
+- The model .pkl file (ex: model_438e_550000s.pkl)
+- The model metadata .json file (ex: model_params_438e_550000s.json)
+
+Put these files in the `models/` directory to easily load them in when training/generating.
+
+
+
+
+# Downloading Training Data
 
 Imagenet data can be downloaded from the following link:
 https://image-net.org/download-images.php
@@ -309,18 +382,6 @@ The parameters of the script are as follows:
 
 <b>Before training a model, make sure you [setup the environment](#environment-setup) and [downloaded pre-trained models]
 
-To run inference be sure too...
-
-...
-
-...
-
-...
-
-...
-
-...
-
 After the above is done, you can run the script as follows from the root directory of this repo:
 
 `python -m src.infer --loadDir [Directory location of models] --loadFile [Filename of the .pkl model file] --loadDefFile [Filename of the .json model parameter file] --[other params]`
@@ -363,12 +424,6 @@ The parameters of the inference scripts are as follows:
 
 
 
-
-
-
-
-
-# Usage
 
 
 
