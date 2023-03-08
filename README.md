@@ -414,6 +414,8 @@ The parameters of the inference scripts are as follows:
 - out_gifname ["diffusion.gif"] - Name of the file to save the output image to.
 - gif_fps [10] - FPS for the output gif.
 
+<b>Note</b>: The class values and labels are zero-indexed and can be found in [this document](https://github.com/gmongaras/Diffusion_models_from_scratch/blob/main/data/class_information.txt).
+
 
 
 
@@ -441,7 +443,7 @@ This script has the following parameters:
 
 
 
-<b>2: Compute statistics for pretrained models<b>
+<b>2: Compute statistics for pretrained models</b>
 
 This step has two alternatives. If you wish to generate FID for a single pre-trained, model use the `compute_model_stats.py` like so:
 
@@ -505,6 +507,58 @@ Once the script is run, the FID will be printed to the screen.
 
 # My Results
 
+As stated in [Downloading Pre-Trained Models](#downloading-pre-trained-models), there are 5 different models I tried out:
+- res ➜ conv ➜ clsAtn ➜ chnAtn (Res-Conv)
+- res ➜ clsAtn ➜ chnAtn (Res)
+- res ➜ res ➜ clsAtn ➜ chnAtn (Res-Res)
+- res ➜ res ➜ clsAtn ➜ atn ➜ chnAtn (Res-Res-Atn)
+- res ➜ clsAtn ➜ chnAtn with 192 channels (Res Large)
+
+Although I trained with classifier-free guidance, I calculated FID scores without guidance as adding guidance requires me to test too many parameters. Additionally, I only collected 10,000 generated images to calculate my FID scores as that already took long enough to generate.
+
+By the way, long FID generation times are one of the problems with diffusion, generation times take forever and unlike GANs, you are not generating images during training. So, you can’t continuously collect FID scores as the model is learning.
+
+Although I keep the classifier guidance value constant, I wanted to test variations between DDIM and DDPM, so I took a look at the step size and the DDIM scale. Note that a DDIM scale of 1 means DDPM, and a scale of 0 means DDIM. A step size of 1 means use all 1000 steps to generate images and a step size of 10 means use 100 steps to generate images:
+- DDIM scale 1, step size 1
+- DDIM scale 1, step size 10
+- DDIM scale 0, step size 1
+- DDIM scale 0, step size 10
+
+Let's checkout the FIDs for each of these models:
+
+<p align="center">
+  <img src="https://github.com/gmongaras/Diffusion_models_from_scratch/blob/main/results/FID/Res-Conv_FID.png" width="700">
+
+  <img src="https://github.com/gmongaras/Diffusion_models_from_scratch/blob/main/results/FID/Res-Res_FID.png" width="700">
+
+  <img src="https://github.com/gmongaras/Diffusion_models_from_scratch/blob/main/results/FID/Res_FID.png" width="700">
+
+  <img src="https://github.com/gmongaras/Diffusion_models_from_scratch/blob/main/results/FID/Res-Large_FID.png" width="700">
+
+  <img src="https://github.com/gmongaras/Diffusion_models_from_scratch/blob/main/results/FID/Res-Res-Atn_FID.png" width="700">
+</p>
+
+It's a little hard to look at in this form. Let's look at a reduced graph with the minimum FID for each model type and u-net construction.
+
+<p align="center">
+  <img src="https://github.com/gmongaras/Diffusion_models_from_scratch/blob/main/results/FID/FID_All.png" width="700">
+</p>
+
+I calculate the FID score every 50,000 steps. I am only showing the minimum FID score over all 600,000 steps to reduce clutter.
+
+Clearly, the models with two residual blocks performed the best. As for the attention addition, it doesn’t look like it made much of a difference as it was about the same as the model without attention.
+
+Also, using a DDIM (0 scale) with a step size of 10 outperformed all other DDPM/DDIM methods of generation. I find this fact interesting since the model was explicitly trained for DDPM (1 scale) generation on 1000 steps, but performs between with DDIM on 100 steps.
+
+Let's see some sample images using a DDIM scale of 0, classifier-free guidance scale of 4 and classes sampled randomly from the list of classes:
+
+<p align="center">
+  <img src="https://github.com/gmongaras/Diffusion_models_from_scratch/blob/main/results/comb.gif" width="500">
+  
+  <img src="https://github.com/gmongaras/Diffusion_models_from_scratch/blob/main/results/comb.png" width="500">
+</p>
+
+Overall, the results look pretty good, though if I trained it for longer and tried to find better hyperparameters, the results could be better!
 
 
 
