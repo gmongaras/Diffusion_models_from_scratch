@@ -4,21 +4,21 @@ This repo is composed of DDPM, DDIM, and Classifier-Free guided models trained o
 To go along with this repo, I also [wrote an article](https://medium.com/@gmongaras/diffusion-models-ddpms-ddims-and-classifier-free-guidance-e07b297b2869) explaining the algorithms behind it.
 
 # Contents
-- Current Additions
+- [Current Additions](#current-additions)
   - Basic Diffusion Model (DDPM)
   - Scheduling the Forward Process
   - Modeling the Reverse Process
   - Faster Inference with DDIMs
   - Classifier Free Guidance
-- Environment Setup
-- Downloading Pre-Trained Models
-- Downloading Training Data
-- Train A Model
-- Generate Images With Pretrained Models
-- Calculating FID for a pretrained model
-- My Results
-- Data
-- References
+- [Environment Setup](#environment-setup)
+- [Downloading Pre-Trained Models](#downloading-pre-trained-models)
+- [Downloading Training Data](#downloading-training-data)
+- [Directory Structure](#directory-structure)
+- [Train A Model](#train-a-model)
+- [Generate Images With Pretrained Models](#generate-images-with-pretrained-models)
+- [Calculating FID for a pretrained model](#calculating-fid-for-a-pretrained-model)
+- [My Results](#my-results)
+- [References](#references)
 
 
 # Current Additions
@@ -139,6 +139,7 @@ The above notation comes from the [Train A Model](#train-a-model) section under 
 
 Each model was trained with the following parameters unless otherwise specified:
 1. Image Resolution: 64x64
+2. Initial embedding channel: 128
 2. Channel multiplier — 1
 3. Number of U-net blocks — 3
 4. Timesteps — 1000
@@ -175,6 +176,7 @@ To pick a model, I suggest looking at the [results](#my-results). The lower the 
     - model file: `model_438e_550000s.pkl`
     - model metadata: `model_params_438e_550000s.json`
     - optimizer: `optim_438e_550000s.pkl`
+  
   
 ## Downloading A Model
 Once the model has been picked, you can download a model at the following link:
@@ -222,6 +224,8 @@ The directory should look as follows when all data is downloaded: [Directory Str
 
 
 # Directory Structure
+
+If you download both pretrained models and the training data, your directory should look like the following tree.
 
 ```
 .
@@ -380,7 +384,7 @@ The parameters of the script are as follows:
 
 # Generate Images With Pretrained Models
 
-<b>Before training a model, make sure you [setup the environment](#environment-setup) and [downloaded pre-trained models]
+<b>Before training a model, make sure you [setup the environment](#environment-setup) and [downloaded pre-trained models](#downloading-pre-trained-models)</b>
 
 After the above is done, you can run the script as follows from the root directory of this repo:
 
@@ -416,8 +420,87 @@ The parameters of the inference scripts are as follows:
 
 # Calculating FID for a pretrained model
 
+Once you have trained your models, you can evaluate them here using these scripts.
+
+Note: All scripts for the section are located in the `eval/` directory.
+
+Calculating FID requires three steps:
+
+<b>1: Compute statistics for the ImageNet Data</b>
+
+For this step, run the `compute_imagenet_stats.py` to compute the FID for the ImageNet dataset.
+
+`python -m eval.compute_imagenet_stats`
+
+This script has the following parameters:
+- archive_file1 - Path to the first ImageNet 64x64 zip file.
+- archive_file2 - Path to the second ImageNet 64x64 zip file.
+- batchSize - Batch size to parallelize the statistics generation.
+- num_imgs - Number of images to sample from the dataset to compute statistics for.
+- device - Device to compute the statistics on.
 
 
+
+<b>2: Compute statistics for pretrained models<b>
+
+This step has two alternatives. If you wish to generate FID for a single pre-trained, model use the `compute_model_stats.py` like so:
+
+`python -m eval.compute_model_stats`
+
+This script has the following paramters (which can be accessed by editting the file):
+- model_dirname - Directory of the pre-trained model to compute stats for.
+- model_filename - Filename of the pre-trained model.
+- model_params_filename - Filename of the metadata of the pre-trained model.
+- device - Device to run the model inference on
+- gpu_num - GPU number to run model inference on (use 0 if only 1 GPU)
+- num_fake_imgs - Number of images to generate before calculating stats of the model. Note that a value less than 10,000 is not recommended as the stats will not be accurate.
+- batchSize - Size of a batch of images to generate at the same time. A higher value speeds up the process, but requires more GPU memory.
+- step_size - Step size of the diffusion model (>= 1). This step size reduces the generation procedure by a factor of `step_size`. If the model requires 1000 steps to generate a single image, but has a step size of 4, then it will take 1000/4 = 250 steps to generate one image. Note that a higher step size means faster generation, but also lower quality images.
+- DDIM_scale - Use 0 for a DDIM and 1 for a DDPM (>= 0). More information on this is located in the training section.
+- corrected - True to put a limit on generation, False to keep the limit off generation. If the model is producing all black or white images, then this limit is probably needed. A low step size usually requires a limit.
+- file_path - Path to where the statistics files should be saved to.
+- mean_filename - Filename to save the mean statistic to.
+- var_filename - FIlename to save the variance statistics to.
+
+
+If you want to generate FID on multiple models and have access to multiple GPUs, you can parallelize the process. The `compute_model_stats_multiple.py` allows for this parallelization and can be run with the following command:
+
+`python -m eval.compute_model_stats_multiple`
+
+Note: The number of items in each of the lists should be at most equal to the number of GPUs you wish to use.
+
+This script has the following parameters which can be changed inside the script file:
+- dir_name - Directory to load all model files from.
+- model_filenames - List of model filenames to calculate FID for.
+- model_params_filenames - List of model metadata filenames.
+- gpu_nums - GPU numbers to put each model on. The index of the GPU number corresponds to the index of the filename.
+- step_size - Step size of the diffusion model (>= 1). This step size reduces the generation procedure by a factor of `step_size`. If the model requires 1000 steps to generate a single image, but has a step size of 4, then it will take 1000/4 = 250 steps to generate one image. Note that a higher step size means faster generation, but also lower quality images.
+- DDIM_scale - Use 0 for a DDIM and 1 for a DDPM (>= 0). More information on this is located in the training section.
+- corrected - True to put a limit on generation, False to keep the limit off generation. If the model is producing all black or white images, then this limit is probably needed. A low step size usually requires a limit.
+- num_fake_imgs - Number of images to generate before calculating stats of the model. Note that a value less than 10,000 is not recommended as the stats will not be accurate.
+- batchSize - Size of a batch of images to generate at the same time. A higher value speeds up the process, but requires more GPU memory.
+- file_path - Directory to save all model statistics to.
+- mean_filenames - Filenames to save the mean statistic for each model to.
+- var_filenames - Filenames to save the variance statistic of each model to.
+
+<b>Note</b>: Compared to the first step, this step is much more computationally heavy as it reqires the generation of images. Since it's a diffusion model, it has the downside of having to generate T (1000) images before a single image is even generated.
+
+
+<b>3: Compute the FID between ImageNet and the model(s)</b>
+
+Once you have generated both the FID and ImageNet statistics, you can compute the FID scores using the `compute_FID.py` script as follows:
+
+`python -m eval.compute_FID`
+
+This script has the following parameters:
+- mean_file1 - Filename which the mean of the ImageNet data is stored.
+- mean_file2 - Filename which the mean of the desired model to calculate FID scored for is stored.
+- var_file1 - Filename which the variance of the ImageNet data is stored.
+- var_file2 - Filename which the variance of the desired model to calculate FID scored for is stored.
+
+Once the script is run, the FID will be printed to the screen.
+
+<b>Note</b>: I have computed the FID for all the pretrained models, which can be found in the same location as [Downloading Pre-Trained Models](#downloading-pre-trained-models) int the Google Drive folder in the filename `saved_stats.7z`. You can use 7-zip to open this file.
 
 
 # My Results
