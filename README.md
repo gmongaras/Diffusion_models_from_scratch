@@ -298,7 +298,7 @@ The parameters of the script are as follows:
 <b>Training Parameters</b>
 - Lambda [0.001] - Weighting term between the variance and mean loss in the model.
 - batchSize [128] - Batch size on a single GPU. If using multiple GPUs, this batch size will be multiplied by the GPU count.
-- gradAccSteps [1] - Number of steps to breakup the batchSize into. Instead of taking 1 massive step where the whole batch is loaded into memory, the batchSize is broken up into sizes of batchSize//numSteps so that it can fit into memory. Mathematically, the update will be the same, as a single batch update, but the update is distributed across smaller updates to fit into memory. A higher value takes more time, but uses less memory.
+- gradAccSteps [1] - Number of steps to breakup the batchSize into. Instead of taking 1 massive step where the whole batch is loaded into memory, the batchSize is broken up into sizes of batchSize//gradAccSteps so that it can fit into memory. Mathematically, the update will be the same, as a single batch update, but the update is distributed across smaller updates to fit into memory. A higher value takes more time, but uses less memory.
 - device [gpu] - Device to put the model on. Use \"gpu\" to put it on one or multiple Cuda devices or \"cpu\" to put it on the CPU. CPU should only be used for testing.
 - epochs [1000000] - Number of epochs to train for.
 - lr [0.0003] - Model learning rate.
