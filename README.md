@@ -1,3 +1,8 @@
+# Update!
+
+This repo is quite old with respect to diffusion models. I wanted to update it to a flow-based model that using a DiT architecture instread of a DDPM model using a U-net. A more modern version of this repo can be found [here](https://github.com/gmongaras/Latent_Diffusion_Model_Imagenet2012)
+
+
 # Summary
 This repo is composed of DDPM, DDIM, and Classifier-Free guided models trained on ImageNet 64x64. More information can be found below.
 
