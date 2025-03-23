@@ -1,6 +1,6 @@
 # Update!
 
-This repo is quite old with respect to diffusion models. I wanted to update it to a flow-based model that using a DiT architecture instread of a DDPM model using a U-net. A more modern version of this repo can be found [here](https://github.com/gmongaras/Latent_Diffusion_Model_Imagenet2012)
+This repo is quite old with respect to diffusion models. I wanted to update it to a flow-based model that using a DiT architecture instead of a DDPM-based model using a U-net architecture. A more modern version of this repo can be found [here](https://github.com/gmongaras/Latent_Diffusion_Model_Imagenet2012)
 
 
 # Summary
